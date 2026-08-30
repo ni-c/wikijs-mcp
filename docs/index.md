@@ -72,5 +72,8 @@ features:
   <text class="label-muted" x="625" y="216" text-anchor="middle">page content returns marked as untrusted data</text>
 </svg>
 <!-- ARCHITECTURE:END -->
+
+![Searching a wiki for text the built-in search cannot find, then being refused an ambiguous edit](/demo.gif)
+
 <figcaption>An MCP client speaks stdio to wikijs-mcp, which calls the Wiki.js GraphQL endpoint. Page content comes back marked as untrusted data.</figcaption>
 </figure>

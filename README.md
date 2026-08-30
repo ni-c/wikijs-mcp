@@ -40,6 +40,10 @@ seven than from sixty-two — see
   <img src="https://wikijs-mcp.ni-c.de/architecture.svg" alt="An MCP client talking to wikijs-mcp over stdio, which calls the Wiki.js GraphQL endpoint" width="800">
 </picture>
 
+<!-- Absolute, like the diagram: npm does not resolve repo-relative paths, and a
+     recording nobody sees is a recording that was not worth making. -->
+<img src="https://wikijs-mcp.ni-c.de/demo.gif" alt="Searching a wiki for text the built-in search cannot find, then being refused an ambiguous edit" width="800">
+
 ## Requirements
 
 - Node.js ≥ 22
