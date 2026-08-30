@@ -5,8 +5,8 @@
 [![npm downloads](https://img.shields.io/npm/dm/%40ni-c%2Fwikijs-mcp)](https://www.npmjs.com/package/@ni-c/wikijs-mcp)
 [![node](https://img.shields.io/node/v/%40ni-c%2Fwikijs-mcp)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/%40ni-c%2Fwikijs-mcp)](LICENSE)
-[![container](https://img.shields.io/badge/ghcr.io-ni--c%2Fwikijs-mcp-blue)](https://github.com/ni-c/wikijs-mcp/pkgs/container/wikijs-mcp)
-[![docs](https://img.shields.io/badge/docs-wikijs-mcp.ni--c.de-informational)](https://wikijs-mcp.ni-c.de)
+[![container](https://img.shields.io/badge/ghcr.io-ni--c%2Fwikijs--mcp-blue)](https://github.com/ni-c/wikijs-mcp/pkgs/container/wikijs-mcp)
+[![docs](https://img.shields.io/badge/docs-wikijs--mcp.ni--c.de-informational)](https://wikijs-mcp.ni-c.de)
 [![sponsor](https://img.shields.io/badge/sponsor-ni--c-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/ni-c)
 
 <!-- The opening is three paragraphs in a fixed shape: what it IS, what it LETS A
