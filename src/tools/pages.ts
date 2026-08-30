@@ -7,6 +7,7 @@ import { identifier } from '../confirm.js';
 import { applyEdits } from '../edits.js';
 import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
+import { matchPages } from '../grep.js';
 import { guarded } from '../guard.js';
 import { outlineOf, sectionOf, windowOf } from '../markdown.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -39,6 +40,21 @@ import type { ToolContext } from './context.js';
 const GREP_MAX_PAGES = 200;
 const GREP_DEFAULT_PAGES = 60;
 const GREP_MAX_MATCHES = 200;
+const GREP_MAX_MATCHES_PER_PAGE = 20;
+/**
+ * Ceiling on the page text held in memory for one search.
+ *
+ * A page body may be 5 MB, so sixty of them is three hundred — and all of it is
+ * copied into the match worker.
+ */
+const GREP_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * One deadline for the whole fetch loop.
+ *
+ * Each request already has its own 30-second timeout, which bounds a request and
+ * not a tool call: two hundred of them in sequence is an hour and a half.
+ */
+const GREP_FETCH_DEADLINE_MS = 60_000;
 
 /** Default window when a caller asks for content without saying how much. */
 const DEFAULT_MAX_CHARS = 20_000;
@@ -449,7 +465,6 @@ export function registerPageTools(
       run(async () => {
         const budget = max_pages ?? GREP_DEFAULT_PAGES;
         const context = context_lines ?? 1;
-        const regex = new RegExp(pattern, ignore_case === false ? '' : 'i');
 
         const data = await api.execute('grep_pages', gql.LIST_PAGES, {
           limit: GREP_MAX_PAGES,
@@ -470,46 +485,56 @@ export function registerPageTools(
         const candidates = all.filter((p) =>
           path_prefix === undefined ? true : p.path.startsWith(path_prefix)
         );
-        const scanned = candidates.slice(0, budget);
+        const wanted = candidates.slice(0, budget);
 
-        const hits: unknown[] = [];
-        let matchCount = 0;
+        // One deadline for the whole fetch loop. Each request has its own
+        // 30-second timeout, so without this a slow upstream turns a single tool
+        // call into an hour and a half during which the server answers nothing.
+        const deadline = Date.now() + GREP_FETCH_DEADLINE_MS;
+        const fetched: Array<{
+          id: number;
+          path: string;
+          title?: string;
+          locale?: string;
+          content: string;
+        }> = [];
         let unreadable = 0;
-        for (const candidate of scanned) {
-          if (matchCount >= GREP_MAX_MATCHES) break;
+        let bytes = 0;
+        let stoppedByBytes = false;
+        let stoppedByTime = false;
+
+        for (const candidate of wanted) {
+          if (Date.now() > deadline) {
+            stoppedByTime = true;
+            break;
+          }
+          if (bytes >= GREP_MAX_BYTES) {
+            stoppedByBytes = true;
+            break;
+          }
           const source = await fetchContent(api, candidate.id);
           if ('unavailable' in source) {
             unreadable++;
             continue;
           }
-          const lines = source.content.split('\n');
-          const matched: unknown[] = [];
-          for (let i = 0; i < lines.length; i++) {
-            if (!regex.test(lines[i] ?? '')) continue;
-            matchCount++;
-            matched.push({
-              line: i + 1,
-              text: lines
-                .slice(Math.max(0, i - context), i + context + 1)
-                .join('\n'),
-            });
-            if (matched.length >= 20 || matchCount >= GREP_MAX_MATCHES) break;
-          }
-          if (matched.length > 0) {
-            hits.push({
-              id: candidate.id,
-              path: candidate.path,
-              title: candidate.title,
-              locale: candidate.locale,
-              matches: matched,
-            });
-          }
+          bytes += Buffer.byteLength(source.content, 'utf8');
+          fetched.push({ ...candidate, content: source.content });
         }
 
+        // The match itself runs in a worker that can be killed — see src/grep.ts.
+        const result = await matchPages({
+          pattern,
+          ignoreCase: ignore_case !== false,
+          contextLines: context,
+          maxMatchesPerPage: GREP_MAX_MATCHES_PER_PAGE,
+          maxMatches: GREP_MAX_MATCHES,
+          pages: fetched,
+        });
+
         const notes: string[] = [];
-        if (candidates.length > scanned.length) {
+        if (candidates.length > wanted.length) {
           notes.push(
-            `${candidates.length - scanned.length} further pages matched the ` +
+            `${candidates.length - wanted.length} further pages matched the ` +
               'filters but were not fetched. Raise max_pages, or narrow with ' +
               'path_prefix, tags or locale.'
           );
@@ -520,24 +545,36 @@ export function registerPageTools(
               'considered — this wiki may have more.'
           );
         }
+        if (stoppedByTime) {
+          notes.push(
+            `Stopped fetching after ${GREP_FETCH_DEADLINE_MS / 1000} seconds ` +
+              `with ${fetched.length} page(s) read. Narrow the search.`
+          );
+        }
+        if (stoppedByBytes) {
+          notes.push(
+            `Stopped fetching at ${Math.round(GREP_MAX_BYTES / 1024)} KB of page ` +
+              `text with ${fetched.length} page(s) read. Narrow the search.`
+          );
+        }
         if (unreadable > 0) {
           notes.push(
             `${unreadable} page(s) could not be read: the API key lacks the ` +
               'read:source scope for them.'
           );
         }
-        if (matchCount >= GREP_MAX_MATCHES) {
+        if (result.stoppedAtLimit) {
           notes.push(
             `Stopped at ${GREP_MAX_MATCHES} matches. Make the pattern more specific.`
           );
         }
 
-        return budgetedList('pages', hits, {
+        return budgetedList('pages', result.hits, {
           untrusted: true,
           extra: {
-            pagesScanned: scanned.length,
-            pagesMatched: hits.length,
-            matches: matchCount,
+            pagesScanned: fetched.length,
+            pagesMatched: result.hits.length,
+            matches: result.matchCount,
             ...(notes.length > 0 ? { notes } : {}),
           },
         });

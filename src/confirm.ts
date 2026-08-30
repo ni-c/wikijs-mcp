@@ -80,6 +80,22 @@ export function setResourceKey(operation: string, targets: string[]): string {
 }
 
 /**
+ * A short, stable digest of a value, for binding a token to content.
+ *
+ * `setResourceKey` hashes the *set* of targets, so a target has to carry the
+ * thing that decides the outcome, not a summary of it. Binding
+ * `permissions.length` rather than the permissions means a confirmation for
+ * `["read:pages"]` executes `["manage:system"]` — same count, same key, opposite
+ * meaning. Anything free-form or list-shaped goes through here first.
+ */
+export function fingerprint(value: unknown): string {
+  return createHash('sha256')
+    .update(typeof value === 'string' ? value : JSON.stringify(value))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+/**
  * The one shape a confirmation may interpolate: a bare identifier.
  *
  * Several tools name their target in the confirmation text — a page path, a
@@ -90,7 +106,7 @@ export function setResourceKey(operation: string, targets: string[]): string {
  * is the wrong place to find that out gently.
  */
 export function identifier(value: string, role: string): string {
-  if (/[\s\u0000-\u001f\u007f"'`]/.test(value)) {
+  if (/[\s\u0000-\u001f\u007f"'`\u200b-\u200f\u2060\ufeff]/.test(value)) {
     throw new Error(
       `wikijs-mcp: refusing to name a ${role} containing whitespace or quotes in a confirmation prompt`
     );

@@ -27,7 +27,11 @@ Three things narrow that, and they compose:
   never added to the server, so there is no call to refuse.
 - **`WIKIJS_ALLOWED_PATHS`** confines the writing page and asset tools to a set of
   path prefixes, matched by path segment — `docs` covers `docs/setup` and not
-  `docs-archive`. Reads are deliberately unrestricted.
+  `docs-archive`. Asset writes are checked against the asset folder tree, a
+  separate namespace from page paths. Operations that cannot be expressed as a
+  prefix — instance-wide maintenance, the tag tools, and comment edits, which
+  Wiki.js gives no page for — refuse while the variable is set rather than
+  quietly becoming exceptions. Reads are deliberately unrestricted.
 - **The API key's own group and page rules** in Wiki.js. This is the only one of
   the three that also applies to anything else using the key, and it is the right
   place to hide pages outright.

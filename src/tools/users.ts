@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
+import { fingerprint } from '../confirm.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -261,20 +262,47 @@ export function registerUserTools(
           confirmations,
           {
             tool: 'update_user',
+            // Every supplied field, not just the groups. The email is the
+            // sign-in address for a local account, so a token issued for a job
+            // title must not be able to repoint it at somebody else's mailbox —
+            // after which reset_user_password mails them the link.
             targets: [
               `user:${user_id}`,
+              ...(email === undefined ? [] : [`email:${email}`]),
+              ...(name === undefined ? [] : [`name:${fingerprint(name)}`]),
+              ...(location === undefined
+                ? []
+                : [`location:${fingerprint(location)}`]),
+              ...(job_title === undefined
+                ? []
+                : [`job:${fingerprint(job_title)}`]),
               ...(groups === undefined
                 ? []
                 : ['groups', ...groups.map((id) => `group:${id}`)]),
             ],
-            what:
+            what: [
+              `update user ${user_id}:`,
+              email === undefined ? '' : 'change their sign-in address,',
               groups === undefined
-                ? `update the profile of user ${user_id}`
-                : `set the group membership of user ${user_id} to ${groups.length} group(s)`,
-            consequence:
+                ? ''
+                : `set their membership to ${groups.length} group(s),`,
+              'change profile fields',
+            ]
+              .filter(Boolean)
+              .join(' '),
+            consequence: [
+              email === undefined
+                ? ''
+                : 'Changing the email changes the address the account signs in with and receives password resets at.',
               groups === undefined
+                ? ''
+                : 'The group list is replaced wholesale, so this can grant or remove access.',
+              email === undefined && groups === undefined
                 ? 'Only profile fields change.'
-                : 'This replaces the whole group list, so it can grant or remove access.',
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
             confirmToken: confirm_token,
           },
           async () => {

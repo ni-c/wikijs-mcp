@@ -5,11 +5,18 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      // Entry point: only wires config and server to the stdio transport and exits
-      // the process; not reachable from unit tests.
-      exclude: ['src/index.ts'],
-      // Measured on 2026-08-30: 96.69 statements, 87.46 branches, 98.28
-      // functions, 97.32 lines. These sit just below that, with headroom on
+      exclude: [
+        // Entry point: only wires config and server to the stdio transport and
+        // exits the process; not reachable from unit tests.
+        'src/index.ts',
+        // Runs inside a worker thread, where v8 coverage does not reach. It is
+        // exercised — test/audit.test.ts drives it through matchPages, including
+        // the timeout path — the instrumentation simply cannot see it, and
+        // leaving it in reports 0% for a file that is covered.
+        'src/grep-worker.ts',
+      ],
+      // Measured on 2026-08-30 after the security audit: 96.61 statements,
+      // 87.79 branches, 98.39 functions, 97.00 lines. These sit just below that, with headroom on
       // functions. Write the missing tests rather than lowering them — vitest 4
       // measures AST-based and stricter than v3, so a major bump can cost a few
       // points and the answer to that is tests too.

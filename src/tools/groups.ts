@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
+import { fingerprint, identifier } from '../confirm.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -176,12 +177,23 @@ export function registerGroupTools(
           confirmations,
           {
             tool: 'update_group',
+            // The content, not the count. Binding `permissions.length` would
+            // give ["read:pages"] and ["manage:system"] the same key, so a
+            // confirmation for a harmless narrowing would execute a handover of
+            // the whole instance.
             targets: [
               `group:${group_id}`,
-              `permissions:${permissions.length}`,
-              `rules:${page_rules.length}`,
+              `permissions:${fingerprint([...permissions].sort())}`,
+              `rules:${fingerprint(page_rules)}`,
             ],
-            what: `replace the permissions of group ${group_id} with ${permissions.length} permission(s) and ${page_rules.length} page rule(s)`,
+            what:
+              `replace the permissions of group ${group_id} with ` +
+              // Permission names are server vocabulary (read:pages,
+              // manage:system), never anything the wiki's users wrote, so they
+              // are safe to name — and naming them is the point: a model
+              // approving "1 permission" cannot see which one.
+              `${permissions.map((p) => identifier(p, 'permission')).join(', ') || 'none'} ` +
+              `and ${page_rules.length} page rule(s)`,
             consequence:
               'This decides what every member of the group can read and edit; omitted rules are deleted.',
             confirmToken: confirm_token,

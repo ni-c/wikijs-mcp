@@ -7,6 +7,7 @@ import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { objectOf } from '../normalize.js';
+import { PathScopeError, type PathScope } from '../paths.js';
 import { jsonResult, run, textResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
@@ -34,9 +35,26 @@ const olderThanParam = z
  * the API keeps answering. All of them are gated except `render_page`, which
  * affects exactly one page and cannot lose anything.
  */
+/**
+ * Refuses an operation that acts on the whole wiki while writes are confined.
+ *
+ * These cannot be expressed as a path prefix — `migrate_pages_locale` moves
+ * every page there is — so there is no way to honour the scope and no honest
+ * way to run them anyway. An operator who set WIKIJS_ALLOWED_PATHS was told
+ * nothing outside it can be written; this keeps that true instead of quietly
+ * making it an exception.
+ */
+function refuseWhenScoped(scope: PathScope, tool: string): void {
+  if (!scope.active) return;
+  throw new PathScopeError(
+    `${tool} acts on every page in the wiki and cannot be confined to ` +
+      `WIKIJS_ALLOWED_PATHS (${scope.prefixes.join(', ')}). Unset it to run this.`
+  );
+}
+
 export function registerMaintenanceTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, confirmations, scope, readOnly }: ToolContext
 ): void {
   if (readOnly) return;
 
@@ -192,8 +210,9 @@ export function registerMaintenanceTools(
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ older_than, confirm_token }) =>
-      run(async () =>
-        guarded(
+      run(async () => {
+        refuseWhenScoped(scope, 'purge_page_history');
+        return guarded(
           confirmations,
           {
             tool: 'purge_page_history',
@@ -215,8 +234,8 @@ export function registerMaintenanceTools(
             );
             return textResult(`Purged page versions older than ${older_than}.`);
           }
-        )
-      )
+        );
+      })
   );
 
   server.registerTool(
@@ -237,6 +256,7 @@ export function registerMaintenanceTools(
     },
     async ({ source_locale, target_locale, confirm_token }) =>
       run(async () => {
+        refuseWhenScoped(scope, 'migrate_pages_locale');
         if (source_locale === target_locale) {
           throw new Error(
             'source_locale and target_locale are the same — there is nothing to move.'

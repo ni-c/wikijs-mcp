@@ -57,11 +57,76 @@ const SENSITIVE_CONFIG_HINTS = [
   'key',
   'credential',
   'auth',
+  // Storage targets expose where they write as well as what they write with,
+  // and the host filesystem layout is the same class of thing the top-level
+  // `configFile` and `workingDirectory` entries above are blocked for.
+  'path',
+  'endpoint',
+  'host',
+];
+
+/**
+ * Names that contain a sensitive-looking word but are not sensitive.
+ *
+ * Needed because the check below is by substring rather than by equality — the
+ * docstring above promises a field Wiki.js starts returning after an upgrade is
+ * redacted the day it appears, and exact matching only ever catches the names
+ * somebody already thought of. `clientSecret`, `refreshToken` and `smtpPassword`
+ * all went straight through before this changed.
+ */
+const NOT_SENSITIVE = new Set(
+  ['providerkey', 'keyshort', 'dkimkeyselector', 'key', 'keys', 'apikeys'].map(
+    (name) => name.toLowerCase()
+  )
+);
+
+/** Words that make a field name credential-shaped. */
+const SENSITIVE_NAME_HINTS = [
+  'password',
+  'passwd',
+  'secret',
+  'token',
+  'credential',
+  'privatekey',
+  'accesskey',
+  'secretkey',
+  'apikey',
+  'jwt',
+  'salt',
+  'tfasecret',
 ];
 
 function isSensitiveName(name: string): boolean {
-  return SENSITIVE_KEYS.has(name.toLowerCase());
+  const lower = name.toLowerCase();
+  if (NOT_SENSITIVE.has(lower)) return false;
+  if (SENSITIVE_KEYS.has(lower)) return true;
+  return SENSITIVE_NAME_HINTS.some((hint) => lower.includes(hint));
 }
+
+/**
+ * Removes credentials embedded in a URL's userinfo.
+ *
+ * Wiki.js' git storage module is configured with a `repoUrl`, and the ordinary
+ * way to give it a personal access token is
+ * `https://user:token@github.com/org/wiki.git`. The field name says nothing
+ * about a secret, so only looking at the value catches it.
+ */
+function scrubUrlCredentials(value: string): string {
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return value;
+  }
+  if (!parsed.username && !parsed.password) return value;
+  parsed.username = REDACTED_USERINFO;
+  parsed.password = '';
+  return parsed.toString();
+}
+
+/** Stands in for a username and password lifted out of a URL. */
+const REDACTED_USERINFO = 'redacted';
 
 function isSensitiveConfigKey(name: string): boolean {
   const lower = name.toLowerCase();
@@ -83,6 +148,7 @@ export function redactSensitive<T>(data: T): T {
 
 function visit(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(visit);
+  if (typeof node === 'string') return scrubUrlCredentials(node);
   if (node === null || typeof node !== 'object') return node;
 
   const record = node as Record<string, unknown>;

@@ -351,6 +351,7 @@ describe('defaults that reach the upstream', () => {
       context_lines: 0,
     })) as { pages: Array<{ matches: Array<{ text: string }> }> };
     expect(insensitive.pages[0]?.matches[0]?.text).toBe('NEEDLE');
+    expect(insensitive.pages[0]?.matches).toHaveLength(1);
     await close();
   });
 

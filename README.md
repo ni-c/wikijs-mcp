@@ -117,6 +117,12 @@ Matching is by path segment, so `docs` covers `docs/setup` and **not**
 `docs-archive/old`. `move_page` checks both ends, so a page cannot be moved out of
 the allowed area or into a protected one.
 
+Asset writes are checked against the asset folder tree, which is a separate
+namespace. The operations that cannot be confined to a prefix at all — the
+instance-wide maintenance tools, the tag tools, and comment edits, because
+Wiki.js does not say which page a comment is on — refuse while the variable is
+set rather than making a silent exception.
+
 ## Installation
 
 ### Claude Code
@@ -134,7 +140,7 @@ claude mcp add wikijs-mcp -- npx -y @ni-c/wikijs-mcp
       "command": "npx",
       "args": ["-y", "@ni-c/wikijs-mcp"],
       "env": {
-        "WIKIJS_URL": "https://service.example.com",
+        "WIKIJS_URL": "https://wiki.example.com",
         "WIKIJS_TOKEN": "…"
       }
     }
@@ -148,14 +154,14 @@ claude mcp add wikijs-mcp -- npx -y @ni-c/wikijs-mcp
 [mcp_servers.wikijs-mcp]
 command = "npx"
 args = ["-y", "@ni-c/wikijs-mcp"]
-env = { WIKIJS_URL = "https://service.example.com", WIKIJS_TOKEN = "…" }
+env = { WIKIJS_URL = "https://wiki.example.com", WIKIJS_TOKEN = "…" }
 ```
 
 ### Docker
 
 ```sh
 docker run --rm -i \
-  -e WIKIJS_URL=https://service.example.com \
+  -e WIKIJS_URL=https://wiki.example.com \
   -e WIKIJS_TOKEN=… \
   ghcr.io/ni-c/wikijs-mcp
 ```

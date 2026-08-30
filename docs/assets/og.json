@@ -1,0 +1,12 @@
+{
+  "tagline": [
+    "Search, read and edit Wiki.js pages —",
+    "and manage the wiki behind them"
+  ],
+  "badges": [
+    "62 tools",
+    "MIT",
+    "Node ≥22"
+  ],
+  "title": "wikijs-mcp"
+}

@@ -11,6 +11,16 @@
 /** Bounds the O(n·m) table below. Above this, fall back to a summary. */
 const MAX_DIFF_LINES = 20_000;
 
+/**
+ * Bounds the *table*, which is the product of the two line counts, not the sum.
+ *
+ * The line-count guard alone permits 10 000 × 10 000 — a hundred million cells
+ * at four bytes each is 400 MB, allocated on the main thread, from two page
+ * revisions that are perfectly ordinary. Four million cells is 16 MB and covers
+ * every real page comparison.
+ */
+const MAX_DIFF_CELLS = 4_000_000;
+
 export interface DiffResult {
   /** Unified diff text, or a summary when the inputs were too large to diff. */
   diff: string;
@@ -144,16 +154,20 @@ export function unifiedDiff(
 
   const a = before.split('\n');
   const b = after.split('\n');
-  if (a.length + b.length > MAX_DIFF_LINES) {
+  if (
+    a.length + b.length > MAX_DIFF_LINES ||
+    a.length * b.length > MAX_DIFF_CELLS
+  ) {
     return {
       diff: '',
       added: 0,
       removed: 0,
       identical: false,
       note:
-        `The two versions have ${a.length} and ${b.length} lines, above the ` +
-        `${MAX_DIFF_LINES}-line ceiling for a line-by-line comparison. Read the ` +
-        'versions with get_page_version instead, or compare a section at a time.',
+        `The two versions have ${a.length} and ${b.length} lines, which is past ` +
+        'the ceiling for a line-by-line comparison — the working table grows as ' +
+        'the product of the two. Read the versions with get_page_version ' +
+        'instead, or compare a section at a time.',
     };
   }
 

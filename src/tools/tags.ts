@@ -2,17 +2,31 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
-import { identifier } from '../confirm.js';
+import { fingerprint, identifier } from '../confirm.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
+import { PathScopeError } from '../paths.js';
 import { budgetedList, run, textResult } from '../result.js';
 import { confirmTokenParam, idParam, tagParam, titleParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
+/** See maintenance.ts: an instance-wide write cannot honour a path prefix. */
+function refuseWhenScoped(
+  scope: { active: boolean; prefixes: readonly string[] },
+  tool: string
+): void {
+  if (!scope.active) return;
+  throw new PathScopeError(
+    `${tool} affects every page carrying the tag, wherever it lives, and cannot ` +
+      `be confined to WIKIJS_ALLOWED_PATHS (${scope.prefixes.join(', ')}). ` +
+      'Unset it to run this.'
+  );
+}
+
 export function registerTagTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_tags',
@@ -93,12 +107,19 @@ export function registerTagTools(
       annotations: { idempotentHint: true },
     },
     async ({ tag_id, tag, title, confirm_token }) =>
-      run(async () =>
-        guarded(
+      run(async () => {
+        // A tag rename touches every page carrying it, wherever those pages
+        // live, so it cannot be confined to a prefix.
+        refuseWhenScoped(scope, 'update_tag');
+        return guarded(
           confirmations,
           {
             tool: 'update_tag',
-            targets: [`tag:${tag_id}`, `name:${tag}`],
+            targets: [
+              `tag:${tag_id}`,
+              `name:${tag}`,
+              `title:${fingerprint(title)}`,
+            ],
             what: `rename tag ${tag_id} to ${identifier(tag, 'tag')}`,
             consequence: 'Every page carrying this tag is affected at once.',
             confirmToken: confirm_token,
@@ -115,8 +136,8 @@ export function registerTagTools(
             );
             return textResult(`Renamed tag ${tag_id} to "${tag}".`);
           }
-        )
-      )
+        );
+      })
   );
 
   server.registerTool(
@@ -133,8 +154,9 @@ export function registerTagTools(
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ tag_id, confirm_token }) =>
-      run(async () =>
-        guarded(
+      run(async () => {
+        refuseWhenScoped(scope, 'delete_tag');
+        return guarded(
           confirmations,
           {
             tool: 'delete_tag',
@@ -154,7 +176,7 @@ export function registerTagTools(
             );
             return textResult(`Deleted tag ${tag_id}.`);
           }
-        )
-      )
+        );
+      })
   );
 }

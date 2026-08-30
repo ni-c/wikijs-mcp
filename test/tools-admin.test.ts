@@ -409,7 +409,10 @@ describe('comment tools', () => {
     stubFetch(routes);
     const { text, close } = await connect();
     expect(
-      await text('update_comment', { comment_id: 4, content: 'edited' })
+      await confirmed(text, 'update_comment', {
+        comment_id: 4,
+        content: 'edited',
+      })
     ).toContain('Updated comment 4');
     expect(
       await confirmed(text, 'delete_comment', { comment_id: 4 })
@@ -547,10 +550,18 @@ describe('user and group tools', () => {
     stubFetch(routes);
     const { text, close } = await connect();
     const prompt = await text('update_user', { user_id: 1, groups: [2] });
-    expect(prompt).toContain('group membership');
-    expect(prompt).toContain('replaces the whole group list');
+    expect(prompt).toContain('set their membership to 1 group(s)');
+    expect(prompt).toContain('replaced wholesale');
     const profileOnly = await text('update_user', { user_id: 1, name: 'X' });
     expect(profileOnly).toContain('Only profile fields change');
+    // Changing the sign-in address is not a profile field, and the prompt must
+    // not say it is.
+    const withEmail = await text('update_user', {
+      user_id: 1,
+      email: 'new@example.test',
+    });
+    expect(withEmail).toContain('sign-in address');
+    expect(withEmail).not.toContain('Only profile fields change');
     await close();
   });
 

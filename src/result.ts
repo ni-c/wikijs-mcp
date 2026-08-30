@@ -7,6 +7,7 @@ import {
   WikiJsGraphQLError,
   WikiJsOperationError,
 } from './api.js';
+import { PatternTimeoutError } from './grep.js';
 import { redactSensitive } from './normalize.js';
 import { PathScopeError } from './paths.js';
 
@@ -100,12 +101,17 @@ export function budgetedList(
   }
   if (byteLength(rendered) > MAX_RESULT_BYTES && shown.length === 1) {
     // A single entry that does not fit cannot be halved any further.
-    return wrap(
-      render([]).replace(
-        'were dropped to stay inside the result size budget.',
-        'were dropped; even a single entry exceeds the result size budget.'
-      )
+    rendered = render([]).replace(
+      'were dropped to stay inside the result size budget.',
+      'were dropped; even a single entry exceeds the result size budget.'
     );
+  }
+  // The halving above shrinks the list and nothing else, so an oversized
+  // `extra` — or an empty list with a large one — escapes the budget entirely.
+  // budgetedJson is the backstop that makes the ceiling hold for the envelope
+  // as a whole.
+  if (byteLength(rendered) > MAX_RESULT_BYTES) {
+    return wrap(budgetedJson(JSON.parse(rendered)));
   }
   return wrap(rendered);
 }
@@ -396,7 +402,8 @@ export async function run(
     if (
       error instanceof ResponseTooLargeError ||
       error instanceof UnexpectedContentTypeError ||
-      error instanceof PathScopeError
+      error instanceof PathScopeError ||
+      error instanceof PatternTimeoutError
     ) {
       return errorResult(`wikijs-mcp: ${error.message}`);
     }

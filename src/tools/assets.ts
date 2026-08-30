@@ -1,14 +1,120 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
-import { assertSucceeded } from '../api.js';
+import { assertSucceeded, type WikiJsApi } from '../api.js';
 import { identifier } from '../confirm.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
+import { assertWithinScope, type PathScope } from '../paths.js';
 import { budgetedList, jsonResult, run, textResult } from '../result.js';
 import { confirmTokenParam, idParam } from '../schema.js';
 import type { ToolContext } from './context.js';
+
+/** Depth the folder walk gives up at, so a cycle cannot loop forever. */
+const MAX_FOLDER_DEPTH = 12;
+
+/**
+ * The slash-separated path of an asset folder, found by walking down from the
+ * root.
+ *
+ * Wiki.js has no parent pointer on an asset folder and no way to look one up by
+ * id — `assets.folders(parentFolderId)` returns one level and nothing else — so
+ * the path has to be reconstructed by descending. Folder trees are small; this
+ * is a handful of queries and only runs when WIKIJS_ALLOWED_PATHS is set.
+ *
+ * Returns `''` for the root, which is outside every prefix — writing to the root
+ * of the asset store is correctly refused while a scope is active.
+ */
+async function folderPath(api: WikiJsApi, folderId: number): Promise<string> {
+  if (folderId === 0) return '';
+  let level: Array<{ id: number; path: string }> = [{ id: 0, path: '' }];
+  for (let depth = 0; depth < MAX_FOLDER_DEPTH; depth++) {
+    const next: Array<{ id: number; path: string }> = [];
+    for (const parent of level) {
+      const data = await api.execute('asset scope', gql.LIST_ASSET_FOLDERS, {
+        parentFolderId: parent.id,
+      });
+      const folders = listOf(
+        objectOf(data.assets, 'the asset query').folders,
+        'asset folders'
+      ) as Array<{ id: number; slug: string }>;
+      for (const folder of folders) {
+        const path = parent.path
+          ? `${parent.path}/${folder.slug}`
+          : folder.slug;
+        if (folder.id === folderId) return path;
+        next.push({ id: folder.id, path });
+      }
+    }
+    if (next.length === 0) break;
+    level = next;
+  }
+  throw new Error(
+    `asset folder ${folderId} was not found under the asset root, so this ` +
+      'server cannot tell whether it is inside WIKIJS_ALLOWED_PATHS. Refusing ' +
+      'rather than guessing.'
+  );
+}
+
+/**
+ * Refuses an asset write whose folder is outside the configured scope.
+ *
+ * The asset store is a second namespace beside the page tree, and
+ * `WIKIJS_ALLOWED_PATHS` is applied to both: an operator who confined writes to
+ * `docs` is told nothing outside `docs` can be written, and an asset deletion
+ * that breaks images across the whole wiki would make that untrue.
+ */
+async function assertFolderWithinScope(
+  api: WikiJsApi,
+  scope: PathScope,
+  folderId: number,
+  role: string
+): Promise<void> {
+  if (!scope.active) return;
+  const path = await folderPath(api, folderId);
+  assertWithinScope(scope, path === '' ? '(asset root)' : path, role);
+}
+
+/** The folder an asset currently lives in, for the tools that take an asset id. */
+async function assetFolderId(api: WikiJsApi, assetId: number): Promise<number> {
+  // Wiki.js cannot look an asset up by id, only list a folder's contents, so the
+  // folder has to be found by scanning. Bounded by MAX_FOLDER_DEPTH as above.
+  const seen: number[] = [0];
+  for (let depth = 0; depth < MAX_FOLDER_DEPTH && seen.length > 0; depth++) {
+    const next: number[] = [];
+    for (const folder of seen) {
+      const listed = await api.execute('asset scope', gql.LIST_ASSETS, {
+        folderId: folder,
+        kind: 'ALL',
+      });
+      const assets = listOf(
+        objectOf(listed.assets, 'the asset query').list,
+        'assets'
+      ) as Array<{ id: number }>;
+      if (assets.some((asset) => asset.id === assetId)) return folder;
+      const children = await api.execute(
+        'asset scope',
+        gql.LIST_ASSET_FOLDERS,
+        {
+          parentFolderId: folder,
+        }
+      );
+      for (const child of listOf(
+        objectOf(children.assets, 'the asset query').folders,
+        'asset folders'
+      ) as Array<{ id: number }>) {
+        next.push(child.id);
+      }
+    }
+    seen.length = 0;
+    seen.push(...next);
+  }
+  throw new Error(
+    `asset ${assetId} was not found in any folder, so this server cannot tell ` +
+      'whether it is inside WIKIJS_ALLOWED_PATHS. Refusing rather than guessing.'
+  );
+}
 
 /**
  * Ceiling on an upload.
@@ -33,11 +139,50 @@ const filenameParam = z
   .refine((value) => !value.includes('..'), {
     message: 'a filename may not contain ".."',
   })
+  .refine((value) => !ACTIVE_EXTENSIONS.test(value), {
+    message:
+      'this server refuses to upload SVG, HTML or XML: Wiki.js serves assets ' +
+      'from the wiki’s own origin, so a file of one of those types can carry ' +
+      'script that runs for every reader. Convert it to PNG first.',
+  })
   .describe('File name including its extension, e.g. "diagram.png".');
+
+/** File types that execute in a browser when served from the wiki's origin. */
+const ACTIVE_EXTENSIONS = /\.(svgz?|x?html?|xml|mhtml?)$/i;
+
+/**
+ * The content type for a filename, rather than the caller's word for it.
+ *
+ * A caller-supplied MIME type is not evidence: `evil.html` announced as
+ * `image/png` is still served as whatever Wiki.js decides, and the only thing
+ * the claim achieves is to make the upload look harmless in a transcript.
+ */
+const CONTENT_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  csv: 'text/csv',
+  json: 'application/json',
+  zip: 'application/zip',
+  gz: 'application/gzip',
+};
+
+function contentTypeFor(filename: string): string {
+  const extension = filename.slice(filename.lastIndexOf('.') + 1).toLowerCase();
+  return CONTENT_TYPES[extension] ?? 'application/octet-stream';
+}
 
 export function registerAssetTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_assets',
@@ -120,10 +265,12 @@ export function registerAssetTools(
       title: 'Upload a file',
       description:
         'Uploads an image or file to an asset folder, so it can be embedded in ' +
-        'a page. Content is passed base64-encoded. Note that Wiki.js 2.x has no ' +
-        'GraphQL mutation for this at all — this uses the editor’s own upload ' +
-        'route, which is not part of the documented API and could change in a ' +
-        'future Wiki.js release.',
+        'a page. Content is passed base64-encoded and the content type is ' +
+        'derived from the extension. SVG, HTML and XML are refused: Wiki.js ' +
+        'serves assets from the wiki’s own origin, so those can carry script ' +
+        'that runs for every reader. Note that Wiki.js 2.x has no GraphQL ' +
+        'mutation for uploads at all — this uses the editor’s own route, which ' +
+        'is undocumented and could change in a future Wiki.js release.',
       inputSchema: {
         filename: filenameParam,
         content_base64: z
@@ -131,15 +278,6 @@ export function registerAssetTools(
           .min(1)
           .max(Math.ceil((MAX_UPLOAD_BYTES * 4) / 3) + 8)
           .describe('File contents, base64-encoded.'),
-        content_type: z
-          .string()
-          .trim()
-          .regex(
-            /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i,
-            'must be a MIME type such as "image/png"'
-          )
-          .optional()
-          .describe('MIME type (default application/octet-stream).'),
         folder_id: idParam
           .or(z.literal(0))
           .optional()
@@ -147,7 +285,7 @@ export function registerAssetTools(
       },
       annotations: { idempotentHint: false },
     },
-    async ({ filename, content_base64, content_type, folder_id }) =>
+    async ({ filename, content_base64, folder_id }) =>
       run(async () => {
         let bytes: Buffer;
         try {
@@ -167,9 +305,15 @@ export function registerAssetTools(
           );
         }
 
+        await assertFolderWithinScope(
+          api,
+          scope,
+          folder_id ?? 0,
+          'asset folder'
+        );
         await api.upload(
           filename,
-          content_type ?? 'application/octet-stream',
+          contentTypeFor(filename),
           bytes,
           folder_id ?? 0
         );
@@ -218,6 +362,12 @@ export function registerAssetTools(
     },
     async ({ parent_folder_id, slug, name }) =>
       run(async () => {
+        await assertFolderWithinScope(
+          api,
+          scope,
+          parent_folder_id ?? 0,
+          'parent asset folder'
+        );
         const data = await api.execute(
           'create_asset_folder',
           gql.CREATE_ASSET_FOLDER,
@@ -250,8 +400,16 @@ export function registerAssetTools(
       annotations: { idempotentHint: true },
     },
     async ({ asset_id, filename, confirm_token }) =>
-      run(async () =>
-        guarded(
+      run(async () => {
+        if (scope.active) {
+          await assertFolderWithinScope(
+            api,
+            scope,
+            await assetFolderId(api, asset_id),
+            'asset folder'
+          );
+        }
+        return guarded(
           confirmations,
           {
             tool: 'rename_asset',
@@ -272,8 +430,8 @@ export function registerAssetTools(
             );
             return textResult(`Renamed asset ${asset_id} to "${filename}".`);
           }
-        )
-      )
+        );
+      })
   );
 
   server.registerTool(
@@ -290,8 +448,16 @@ export function registerAssetTools(
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ asset_id, confirm_token }) =>
-      run(async () =>
-        guarded(
+      run(async () => {
+        if (scope.active) {
+          await assertFolderWithinScope(
+            api,
+            scope,
+            await assetFolderId(api, asset_id),
+            'asset folder'
+          );
+        }
+        return guarded(
           confirmations,
           {
             tool: 'delete_asset',
@@ -311,7 +477,7 @@ export function registerAssetTools(
             );
             return textResult(`Deleted asset ${asset_id}.`);
           }
-        )
-      )
+        );
+      })
   );
 }

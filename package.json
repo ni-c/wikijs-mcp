@@ -48,7 +48,9 @@
     "test:coverage": "vitest run --coverage",
     "prepublishOnly": "npm run lint && npm test && npm run build",
     "assets": "node scripts/gen-assets.mjs",
-    "assets:check": "node scripts/gen-assets.mjs --check"
+    "assets:check": "node scripts/gen-assets.mjs --check",
+    "docs:tools": "node scripts/gen-tools-doc.mjs",
+    "docs:tools:check": "node scripts/gen-tools-doc.mjs --check"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
