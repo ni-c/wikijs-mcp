@@ -12,7 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      last in the file so the link definitions come along. -->
 <!-- #region changelog -->
 
-## [Unreleased]
+## [0.1.2] - 2026-08-30
+
+### Fixed
+
+- **The container and documentation badges rendered as broken images.** Both were
+  mis-escaped: shields.io reads a literal hyphen as a field separator, so
+  `ghcr.io-ni--c%2Fwikijs-mcp-blue` splits in the wrong place and the endpoint
+  answers 404. The `ni--c` half was escaped correctly in both, which is what made
+  it easy to miss. This release is what carries the fix to the package page —
+  a README only reaches npmjs.com with a publish.
+
+- **The issue forms shipped with their template placeholders unresolved.** All
+  three contact links pointed at `github.com/ni-c/{{REPO}}/…`, so both "Question
+  or discussion" and "Report a vulnerability privately" led to a 404 — the second
+  being the one that matters, since the alternative a reporter reaches for is a
+  public issue. The forms also asked for a "{{REPO}} version" and a
+  "{{TARGET_SYSTEM}} API endpoint"; they now name wikijs-mcp, Wiki.js and its
+  GraphQL schema.
 
 ## [0.1.1] - 2026-08-30
 
