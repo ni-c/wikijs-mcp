@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+*.log
+.env
+.env.*
+*.local
+.npmrc
+.DS_Store
+
+# Credentials minted by scripts/sandbox/bootstrap.py for the local test wiki.
+scripts/sandbox/sandbox.json

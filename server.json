@@ -1,0 +1,131 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ni-c/wikijs-mcp",
+  "title": "Wiki.js",
+  "description": "Search, read and edit Wiki.js pages, and manage its assets, users, groups and comments",
+  "websiteUrl": "https://wikijs-mcp.ni-c.de",
+  "repository": {
+    "url": "https://github.com/ni-c/wikijs-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@ni-c/wikijs-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "WIKIJS_URL",
+          "description": "Base URL of the Wiki.js instance, e.g. https://wiki.example.com",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_TOKEN",
+          "description": "API key from Administration → API Access. WIKIJS_API_KEY is accepted as an alias",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_LOCALE",
+          "description": "Locale assumed by page tools that are not given one; part of a page's identity (default: en)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_READ_ONLY",
+          "description": "Set to true to register only the read tools (default: false)",
+          "isRequired": false,
+          "format": "boolean"
+        },
+        {
+          "name": "WIKIJS_ALLOWED_PATHS",
+          "description": "Comma-separated page path prefixes the write tools are confined to, matched by path segment",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_ALLOW_TOOLS",
+          "description": "Comma-separated tool names or list_* prefixes to register; 'essential' selects a curated preset (default: all tools)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_DENY_TOOLS",
+          "description": "Comma-separated tool names or list_* prefixes to remove from whatever the allow list left",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_INSECURE_TLS",
+          "description": "Set to true to accept a self-signed certificate from a self-hosted instance (default: false)",
+          "isRequired": false,
+          "format": "boolean"
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/ni-c/wikijs-mcp:0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "WIKIJS_URL",
+          "description": "Base URL of the Wiki.js instance, e.g. https://wiki.example.com",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_TOKEN",
+          "description": "API key from Administration → API Access. WIKIJS_API_KEY is accepted as an alias",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_LOCALE",
+          "description": "Locale assumed by page tools that are not given one; part of a page's identity (default: en)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_READ_ONLY",
+          "description": "Set to true to register only the read tools (default: false)",
+          "isRequired": false,
+          "format": "boolean"
+        },
+        {
+          "name": "WIKIJS_ALLOWED_PATHS",
+          "description": "Comma-separated page path prefixes the write tools are confined to, matched by path segment",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_ALLOW_TOOLS",
+          "description": "Comma-separated tool names or list_* prefixes to register; 'essential' selects a curated preset (default: all tools)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_DENY_TOOLS",
+          "description": "Comma-separated tool names or list_* prefixes to remove from whatever the allow list left",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "WIKIJS_INSECURE_TLS",
+          "description": "Set to true to accept a self-signed certificate from a self-hosted instance (default: false)",
+          "isRequired": false,
+          "format": "boolean"
+        }
+      ]
+    }
+  ]
+}
