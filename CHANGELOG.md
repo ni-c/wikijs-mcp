@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-30
+
+### Fixed
+
+- `list_pages` and `grep_pages` returned far fewer pages than asked for, with
+  nothing saying so. Wiki.js' `pages.list` joins the tag table and applies
+  `limit` to the **joined rows**, not to the pages — a page with three tags
+  eats three of them — so asking for 50 on a 62-page wiki returned between 13
+  and 23 depending on the sort order. A short answer was indistinguishable
+  from a small wiki. Both tools now bound the list themselves, and `list_pages`
+  reports how many pages matched as well as how many are shown.
+- The demo recording is now actually shown in the README and on the
+  documentation home page. It was recorded and checked in, and nothing
+  referenced it.
+
 ## [0.1.0] - 2026-08-30
 
 ### Added

@@ -148,10 +148,11 @@ export function registerPageTools(
     {
       title: 'List pages',
       description:
-        'Lists pages with their metadata, newest first by default. Wiki.js has ' +
-        'no offset for this query, so a wiki larger than the limit cannot be ' +
-        'paged through — narrow with tags, locale, creator_id or author_id ' +
-        'instead. Returns no page content; use get_page for that.',
+        'Lists pages with their metadata, newest first by default. The result ' +
+        'reports how many pages matched as well as how many are shown, so a ' +
+        'short answer is never mistaken for a small wiki. Wiki.js has no offset ' +
+        'for this query, so narrow with tags, locale, creator_id or author_id ' +
+        'rather than paging. Returns no page content; use get_page for that.',
       inputSchema: {
         limit: limitParam.optional(),
         tags: z
@@ -186,7 +187,6 @@ export function registerPageTools(
       run(async () => {
         const max = limit ?? DEFAULT_LIMIT;
         const data = await api.execute('list_pages', gql.LIST_PAGES, {
-          limit: max,
           orderBy: order_by ?? 'UPDATED',
           orderByDirection: direction ?? 'DESC',
           tags: tags ?? null,
@@ -195,13 +195,28 @@ export function registerPageTools(
           authorId: author_id ?? null,
         });
         const pages = objectOf(data.pages, 'the page query');
-        const list = listOf(pages.list, 'pages');
+        // Sliced here, not by Wiki.js — see the comment on LIST_PAGES. Passing
+        // its `limit` would silently return a fraction of the matching pages
+        // and give no hint that it had.
+        const all = listOf(pages.list, 'pages');
+        const list = all.slice(0, max);
         return budgetedList('pages', list, {
           untrusted: true,
           narrowWith:
             'Narrow with tags, locale, creator_id or author_id — Wiki.js offers ' +
             'no offset for this query.',
-          extra: { count: list.length, limit: max },
+          extra: {
+            shown: list.length,
+            matching: all.length,
+            limit: max,
+            ...(all.length > list.length
+              ? {
+                  note:
+                    `${all.length - list.length} further pages match; raise limit ` +
+                    'or narrow with tags, locale, creator_id or author_id.',
+                }
+              : {}),
+          },
         });
       })
   );
@@ -467,7 +482,6 @@ export function registerPageTools(
         const context = context_lines ?? 1;
 
         const data = await api.execute('grep_pages', gql.LIST_PAGES, {
-          limit: GREP_MAX_PAGES,
           orderBy: 'UPDATED',
           orderByDirection: 'DESC',
           tags: tags ?? null,
@@ -476,12 +490,16 @@ export function registerPageTools(
           authorId: null,
         });
         const pages = objectOf(data.pages, 'the page query');
-        const all = listOf(pages.list, 'pages') as Array<{
+        const everything = listOf(pages.list, 'pages') as Array<{
           id: number;
           path: string;
           title?: string;
           locale?: string;
         }>;
+        // Wiki.js' own `limit` counts joined tag rows, not pages, so the ceiling
+        // is applied here — otherwise this would scan a fraction of what it
+        // reports and quietly miss matches.
+        const all = everything.slice(0, GREP_MAX_PAGES);
         const candidates = all.filter((p) =>
           path_prefix === undefined ? true : p.path.startsWith(path_prefix)
         );
@@ -539,10 +557,10 @@ export function registerPageTools(
               'path_prefix, tags or locale.'
           );
         }
-        if (all.length === GREP_MAX_PAGES) {
+        if (everything.length > all.length) {
           notes.push(
-            `Only the ${GREP_MAX_PAGES} most recently updated pages were ` +
-              'considered — this wiki may have more.'
+            `This wiki has ${everything.length} pages; only the ` +
+              `${GREP_MAX_PAGES} most recently updated were considered.`
           );
         }
         if (stoppedByTime) {

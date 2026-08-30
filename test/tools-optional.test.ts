@@ -94,8 +94,9 @@ describe('defaults that reach the upstream', () => {
     const stub = stubFetch(routes);
     const { text, close } = await connect();
     await text('list_pages', {});
+    // No `limit`: Wiki.js applies it to joined tag rows rather than pages, so
+    // this tool bounds the list itself.
     expect(stub.calls[0]?.variables).toEqual({
-      limit: 50,
       orderBy: 'UPDATED',
       orderByDirection: 'DESC',
       tags: null,
@@ -119,7 +120,6 @@ describe('defaults that reach the upstream', () => {
       direction: 'ASC',
     });
     expect(stub.calls[0]?.variables).toEqual({
-      limit: 3,
       orderBy: 'TITLE',
       orderByDirection: 'ASC',
       tags: ['a'],

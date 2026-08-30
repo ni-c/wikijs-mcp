@@ -26,7 +26,7 @@ a second call carrying that token performs the operation.
 
 **List pages** — read-only, **essential**
 
-Lists pages with their metadata, newest first by default. Wiki.js has no offset for this query, so a wiki larger than the limit cannot be paged through — narrow with tags, locale, creator_id or author_id instead. Returns no page content; use get_page for that.
+Lists pages with their metadata, newest first by default. The result reports how many pages matched as well as how many are shown, so a short answer is never mistaken for a small wiki. Wiki.js has no offset for this query, so narrow with tags, locale, creator_id or author_id rather than paging. Returns no page content; use get_page for that.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

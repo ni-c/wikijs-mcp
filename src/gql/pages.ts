@@ -57,9 +57,21 @@ export const GET_PAGE_RENDER = `
   }
 `;
 
+/**
+ * No `limit` variable, deliberately.
+ *
+ * Wiki.js' `pages.list` joins the tag table and applies `limit` to the *joined
+ * rows*, not to the pages — a page with three tags eats three of them. Asking
+ * for 50 on a 62-page wiki with 74 tags returns between 13 and 23 pages
+ * depending on `orderBy`, and the caller has no way to tell that from "the wiki
+ * has 13 pages". Measured against Wiki.js 2.5.314.
+ *
+ * So the limit is applied here instead: fetch the list and slice it. The
+ * response is metadata only — roughly 200 bytes per page — and `readCapped`
+ * bounds it regardless.
+ */
 export const LIST_PAGES = `
   query ListPages(
-    $limit: Int
     $orderBy: PageOrderBy
     $orderByDirection: PageOrderByDirection
     $tags: [String!]
@@ -69,7 +81,6 @@ export const LIST_PAGES = `
   ) {
     pages {
       list(
-        limit: $limit
         orderBy: $orderBy
         orderByDirection: $orderByDirection
         tags: $tags

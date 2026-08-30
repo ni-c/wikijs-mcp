@@ -417,6 +417,92 @@ describe('H4/M1/M2 — the path scope covers what the documentation claims', () 
   });
 });
 
+describe("Wiki.js' list limit counts tag rows, not pages", () => {
+  // `pages.list` joins the tag table and applies `limit` to the joined rows, so
+  // a page with three tags eats three of them. Asking for 50 on a 62-page wiki
+  // returned between 13 and 23 pages depending on `orderBy` — and nothing said
+  // so, which reads exactly like "the wiki has 13 pages".
+  const many = Array.from({ length: 40 }, (_, i) => ({
+    id: i + 1,
+    path: `p${i}`,
+    title: `P${i}`,
+    locale: 'en',
+  }));
+
+  it('never sends a limit to Wiki.js', async () => {
+    const stub = stubFetch({
+      'query ListPages': { data: { pages: { list: many } } },
+    });
+    const { text, close } = await connect();
+    await text('list_pages', { limit: 5 });
+    expect(stub.calls[0]?.query).not.toContain('$limit');
+    expect(stub.calls[0]?.variables).not.toHaveProperty('limit');
+    await close();
+  });
+
+  it('applies the limit itself and reports the true total', async () => {
+    stubFetch({ 'query ListPages': { data: { pages: { list: many } } } });
+    const { json, close } = await connect();
+    const out = (await json('list_pages', { limit: 5 })) as {
+      shown: number;
+      matching: number;
+      note: string;
+    };
+    expect(out.shown).toBe(5);
+    expect(out.matching).toBe(40);
+    expect(out.note).toContain('35 further pages');
+    await close();
+  });
+
+  it('says nothing extra when everything fits', async () => {
+    stubFetch({
+      'query ListPages': { data: { pages: { list: many.slice(0, 3) } } },
+    });
+    const { json, close } = await connect();
+    const out = (await json('list_pages', {})) as {
+      shown: number;
+      note?: string;
+    };
+    expect(out.shown).toBe(3);
+    expect(out.note).toBeUndefined();
+    await close();
+  });
+
+  it('grep_pages bounds the page list itself, and says what it skipped', async () => {
+    const lots = Array.from({ length: 260 }, (_, i) => ({
+      id: i + 1,
+      path: `p${i}`,
+      title: 'P',
+      locale: 'en',
+    }));
+    stubFetch({
+      'query ListPages': { data: { pages: { list: lots } } },
+      'query GetPageContent': {
+        data: {
+          pages: {
+            single: {
+              id: 1,
+              path: 'p',
+              locale: 'en',
+              contentType: 'markdown',
+              content: 'nothing here\n',
+            },
+          },
+        },
+      },
+    });
+    const { json, close } = await connect();
+    const out = (await json('grep_pages', {
+      pattern: 'zzz',
+      max_pages: 2,
+    })) as {
+      notes: string[];
+    };
+    expect(out.notes.join(' ')).toContain('260 pages');
+    await close();
+  });
+});
+
 describe('M2 — update_comment destroys writing that has no history', () => {
   it('is gated, like delete_comment', async () => {
     stubFetch({
