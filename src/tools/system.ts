@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
@@ -34,7 +34,7 @@ export function registerSystemTools(
         'call to make when something is not behaving — it proves the URL and ' +
         'the API key work at all. Fields describing the host filesystem and ' +
         'database host are deliberately not requested.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -58,7 +58,7 @@ export function registerSystemTools(
         'checking once per wiki: the locale is part of a page’s identity, and ' +
         'every page tool here falls back to WIKIJS_LOCALE, so a wiki running on ' +
         '"de" needs that set or nothing will be found.',
-      inputSchema: {
+      inputSchema: z.object({
         installed_only: z
           .boolean()
           .optional()
@@ -66,7 +66,7 @@ export function registerSystemTools(
             'Only locales actually installed (default true). Wiki.js lists ' +
               'every locale it could download otherwise — over a hundred.'
           ),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ installed_only }) =>
@@ -102,7 +102,7 @@ export function registerSystemTools(
         'The sidebar navigation as configured, per locale. This is curated by ' +
         'hand and is not the page tree — get_page_tree is what reflects the ' +
         'pages that actually exist.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -128,7 +128,7 @@ export function registerSystemTools(
         'search_pages: the default "Database - Basic" indexes only titles and ' +
         'descriptions, so nothing written inside a page is searchable until a ' +
         'real engine is configured and the index rebuilt.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -160,7 +160,7 @@ export function registerSystemTools(
         'revoked, plus whether API access is switched on at all. Wiki.js stores ' +
         'only a truncated form of each key and never returns the secret, so ' +
         'nothing here can be used to authenticate.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -182,7 +182,7 @@ export function registerSystemTools(
         'The configured storage backends — git mirrors, S3 buckets, local ' +
         'file dumps — with their sync status and last error. Credentials in ' +
         'their configuration are redacted.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -209,10 +209,10 @@ export function registerSystemTools(
         'Revokes an API key immediately and for good — Wiki.js has no way to ' +
         'un-revoke one. Note that this can revoke the key this server is using, ' +
         'which would cut its own connection. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         key_id: idParam.describe('Key id from list_api_keys.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ key_id, confirm_token }) =>
@@ -252,12 +252,12 @@ export function registerSystemTools(
         'Switches Wiki.js’ whole API on or off. Turning it off disables every ' +
         'API key at once, including this server’s — after which the only way ' +
         'back is the web administration UI. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         enabled: z
           .boolean()
           .describe('True to enable the API, false to disable it.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ enabled, confirm_token }) =>

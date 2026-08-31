@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
@@ -57,10 +57,10 @@ export function registerGroupTools(
         'Lists the wiki’s groups with how many users each has. Groups marked ' +
         'isSystem are Wiki.js’ own Administrators and Guests — they exist ' +
         'always and should not be deleted.',
-      inputSchema: {
+      inputSchema: z.object({
         filter: z.string().trim().max(255).optional(),
         order_by: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional(),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ filter, order_by }) =>
@@ -88,7 +88,7 @@ export function registerGroupTools(
         'members. This is the authoritative answer to "who can see or edit ' +
         'what" — and it is what update_group needs as its starting point, ' +
         'because that mutation replaces the whole rule set.',
-      inputSchema: { group_id: idParam },
+      inputSchema: z.object({ group_id: idParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ group_id }) =>
@@ -113,9 +113,9 @@ export function registerGroupTools(
       description:
         'Creates an empty group. It starts with no permissions and no page ' +
         'rules, so it grants nothing until update_group is called.',
-      inputSchema: {
+      inputSchema: z.object({
         name: z.string().trim().min(1).max(255).describe('Group name.'),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({ name }) =>
@@ -141,7 +141,7 @@ export function registerGroupTools(
         'group with get_group first and send back the full set with your ' +
         'change applied. Requires a confirmation token, because this is the ' +
         'call that decides who can read and edit the wiki.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         name: z.string().trim().min(1).max(255),
         permissions: z
@@ -161,7 +161,7 @@ export function registerGroupTools(
           .optional()
           .describe('Where members land after signing in (default "/").'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { idempotentHint: true },
     },
     async ({
@@ -223,10 +223,10 @@ export function registerGroupTools(
       description:
         'Removes a group. Its members keep their accounts but lose whatever ' +
         'access the group gave them. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ group_id, confirm_token }) =>
@@ -263,11 +263,11 @@ export function registerGroupTools(
         'Adds one account to one group, leaving its other memberships alone — ' +
         'the additive counterpart to update_user’s groups list. Requires a ' +
         'confirmation token, because a group is what grants access.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({ group_id, user_id, confirm_token }) =>
@@ -306,11 +306,11 @@ export function registerGroupTools(
         'Takes one account out of one group. Requires a confirmation token — ' +
         'removing somebody from their only group leaves them able to sign in ' +
         'and see nothing.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ group_id, user_id, confirm_token }) =>

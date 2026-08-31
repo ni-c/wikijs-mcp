@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded, type WikiJsApi } from '../api.js';
@@ -192,7 +192,7 @@ export function registerAssetTools(
         'Lists the images and files in one asset folder. Folder 0 is the root. ' +
         'Assets are flat within a folder and Wiki.js has no search across them, ' +
         'so finding one means walking list_asset_folders.',
-      inputSchema: {
+      inputSchema: z.object({
         folder_id: idParam
           .or(z.literal(0))
           .optional()
@@ -203,7 +203,7 @@ export function registerAssetTools(
           .enum(['ALL', 'IMAGE', 'BINARY'])
           .optional()
           .describe('Restrict to images or to non-image files.'),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ folder_id, kind }) =>
@@ -231,12 +231,12 @@ export function registerAssetTools(
         'Lists the folders directly under an asset folder. Folder 0 is the ' +
         'root. Wiki.js returns one level at a time, so a deep tree needs one ' +
         'call per level.',
-      inputSchema: {
+      inputSchema: z.object({
         parent_folder_id: idParam
           .or(z.literal(0))
           .optional()
           .describe('Parent folder id. 0 (default) is the root.'),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ parent_folder_id }) =>
@@ -271,7 +271,7 @@ export function registerAssetTools(
         'that runs for every reader. Note that Wiki.js 2.x has no GraphQL ' +
         'mutation for uploads at all — this uses the editor’s own route, which ' +
         'is undocumented and could change in a future Wiki.js release.',
-      inputSchema: {
+      inputSchema: z.object({
         filename: filenameParam,
         content_base64: z
           .string()
@@ -282,7 +282,7 @@ export function registerAssetTools(
           .or(z.literal(0))
           .optional()
           .describe('Target folder id. 0 (default) is the root.'),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({ filename, content_base64, folder_id }) =>
@@ -335,7 +335,7 @@ export function registerAssetTools(
       description:
         'Creates a folder in the asset store. The slug is what appears in the ' +
         'URL of every file inside it.',
-      inputSchema: {
+      inputSchema: z.object({
         parent_folder_id: idParam
           .or(z.literal(0))
           .optional()
@@ -357,7 +357,7 @@ export function registerAssetTools(
           .max(255)
           .optional()
           .describe('Display name (defaults to the slug).'),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({ parent_folder_id, slug, name }) =>
@@ -392,11 +392,11 @@ export function registerAssetTools(
       description:
         'Renames an asset. Pages embedding it by its old URL will break — ' +
         'Wiki.js does not rewrite them.',
-      inputSchema: {
+      inputSchema: z.object({
         asset_id: idParam.describe('Asset id from list_assets.'),
         filename: filenameParam.describe('New file name, including extension.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { idempotentHint: true },
     },
     async ({ asset_id, filename, confirm_token }) =>
@@ -441,10 +441,10 @@ export function registerAssetTools(
       description:
         'Deletes an asset permanently. Any page embedding it will show a broken ' +
         'image or a dead link. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         asset_id: idParam.describe('Asset id from list_assets.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ asset_id, confirm_token }) =>

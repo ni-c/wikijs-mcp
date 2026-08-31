@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
@@ -66,7 +66,7 @@ export function registerMaintenanceTools(
         'Forces Wiki.js to regenerate one page’s HTML from its source. The fix ' +
         'for a page whose rendering is stale after a theme or renderer change. ' +
         'Changes no content and cannot lose anything.',
-      inputSchema: { page_id: idParam },
+      inputSchema: z.object({ page_id: idParam }),
       annotations: { idempotentHint: true },
     },
     async ({ page_id }) =>
@@ -90,7 +90,7 @@ export function registerMaintenanceTools(
         'Drops Wiki.js’ rendered-page cache for the whole wiki. Nothing is ' +
         'lost, but every page has to be rendered again on first access, so a ' +
         'busy instance gets slower for a while. Requires a confirmation token.',
-      inputSchema: { confirm_token: confirmTokenParam.optional() },
+      inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
       annotations: { idempotentHint: false },
     },
     async ({ confirm_token }) =>
@@ -126,7 +126,7 @@ export function registerMaintenanceTools(
         'repair for a navigation tree that disagrees with the pages actually ' +
         'present, usually after a bulk import or a database edit. Requires a ' +
         'confirmation token.',
-      inputSchema: { confirm_token: confirmTokenParam.optional() },
+      inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
       annotations: { idempotentHint: false },
     },
     async ({ confirm_token }) =>
@@ -165,7 +165,7 @@ export function registerMaintenanceTools(
         'switching away from "Database - Basic", because the new engine starts ' +
         'empty and search silently returns nothing until this runs. On the ' +
         'basic engine it does nothing. Requires a confirmation token.',
-      inputSchema: { confirm_token: confirmTokenParam.optional() },
+      inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
       annotations: { idempotentHint: false },
     },
     async ({ confirm_token }) =>
@@ -203,10 +203,10 @@ export function registerMaintenanceTools(
         'Deletes stored page versions older than a cutoff, across the whole ' +
         'wiki. The versions are gone permanently — this is the one maintenance ' +
         'operation that destroys data. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         older_than: olderThanParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ older_than, confirm_token }) =>
@@ -247,11 +247,11 @@ export function registerMaintenanceTools(
         'The usual reason is a wiki set up under the wrong locale code. Every ' +
         'page path changes, so every external link into the wiki breaks. ' +
         'Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         source_locale: localeParam.describe('Locale to move pages out of.'),
         target_locale: localeParam.describe('Locale to move pages into.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ source_locale, target_locale, confirm_token }) =>

@@ -1,8 +1,9 @@
 // Calls every tool in the catalogue at least once against the sandbox,
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { Client } from '@modelcontextprotocol/client';
+
 // following the confirm-token dance where one is required.
 import fs from 'node:fs';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { ALL_TOOLS } from '../../dist/tools/catalogue.js';
 
 const cfg = JSON.parse(

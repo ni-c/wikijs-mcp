@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
 import {
   ConfirmationStore,
   confirmationPrompt,
   identifier,
   setResourceKey,
 } from '../src/confirm.js';
+import type { CallToolResult } from '@modelcontextprotocol/server';
+
 import { guarded } from '../src/guard.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { textResult } from '../src/result.js';
 
 afterEach(() => {

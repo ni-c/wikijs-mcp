@@ -1,9 +1,9 @@
 // Proves the concurrent-edit guard against a real interleaved write:
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { Client } from '@modelcontextprotocol/client';
+
 // the model reads, somebody else saves, the model writes.
 import fs from 'node:fs';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-
 const cfg = JSON.parse(
   fs.readFileSync(new URL('./sandbox.json', import.meta.url), 'utf8')
 );

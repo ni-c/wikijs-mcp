@@ -1,13 +1,5 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
-import { assertSucceeded } from '../api.js';
-import { fingerprint } from '../confirm.js';
-import * as gql from '../gql/admin.js';
-import * as pageGql from '../gql/pages.js';
-import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
-import { assertWithinScope, PathScopeError } from '../paths.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
@@ -21,6 +13,14 @@ import {
   localeParam,
   pagePathParam,
 } from '../schema.js';
+
+import { assertSucceeded } from '../api.js';
+import { fingerprint } from '../confirm.js';
+import * as gql from '../gql/admin.js';
+import * as pageGql from '../gql/pages.js';
+import { guarded } from '../guard.js';
+import { listOf, objectOf } from '../normalize.js';
+import { assertWithinScope, PathScopeError } from '../paths.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -65,10 +65,10 @@ export function registerCommentTools(
         'by page id, which is the one place Wiki.js asks for the path instead. ' +
         'An empty list can also mean comments are switched off for the wiki; ' +
         'get_site_info reports that.',
-      inputSchema: {
+      inputSchema: z.object({
         path: pagePathParam,
         locale: localeParam.optional(),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ path, locale }) =>
@@ -94,7 +94,7 @@ export function registerCommentTools(
       title: 'Get one comment',
       description:
         'Returns a single comment by id, with its source and its rendered HTML.',
-      inputSchema: { comment_id: idParam },
+      inputSchema: z.object({ comment_id: idParam }),
       annotations: { readOnlyHint: true },
     },
     async ({ comment_id }) =>
@@ -121,11 +121,11 @@ export function registerCommentTools(
         'comment is attributed to the account the API key belongs to, which is ' +
         'usually a service account rather than a person — say so in the text if ' +
         'that matters.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.describe('Page id the comment belongs to.'),
         content: commentBodyParam,
         reply_to: idParam.optional().describe('Comment id this replies to.'),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({ page_id, content, reply_to }) =>
@@ -169,11 +169,11 @@ export function registerCommentTools(
       description:
         'Replaces the body of a comment. Wiki.js keeps no history for ' +
         'comments, so the previous text is gone.',
-      inputSchema: {
+      inputSchema: z.object({
         comment_id: idParam,
         content: commentBodyParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ comment_id, content, confirm_token }) =>
@@ -217,10 +217,10 @@ export function registerCommentTools(
       description:
         'Removes a comment permanently. Replies to it are not removed with it. ' +
         'Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         comment_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ comment_id, confirm_token }) =>

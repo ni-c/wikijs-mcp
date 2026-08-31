@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
@@ -37,7 +37,7 @@ export function registerTagTools(
         'used. Tags are the one cross-cutting index a wiki has, so this is ' +
         'often a better starting point than search — feed a tag back into ' +
         'list_pages to see what carries it.',
-      inputSchema: {},
+      inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
     async () =>
@@ -62,14 +62,14 @@ export function registerTagTools(
         'Finds tags matching a fragment. Cheaper than list_tags on a wiki with ' +
         'hundreds of them, and the usual way to check what a tag is actually ' +
         'called before filtering list_pages by it.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z
           .string()
           .trim()
           .min(1)
           .max(255)
           .describe('Fragment to match against tag names.'),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ query }) =>
@@ -98,12 +98,12 @@ export function registerTagTools(
         'Changes a tag’s name or display title across every page carrying it. ' +
         'Renaming affects all of them at once, which is the point and also the ' +
         'risk, so it needs a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         tag_id: idParam.describe('Tag id from list_tags.'),
         tag: tagParam.describe('New tag name.'),
         title: titleParam.describe('New display title.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { idempotentHint: true },
     },
     async ({ tag_id, tag, title, confirm_token }) =>
@@ -147,10 +147,10 @@ export function registerTagTools(
       description:
         'Removes a tag from the wiki and from every page that carries it. The ' +
         'pages themselves are untouched. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         tag_id: idParam.describe('Tag id from list_tags.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ tag_id, confirm_token }) =>

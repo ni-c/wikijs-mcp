@@ -1,17 +1,5 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { McpServer, CallToolResult } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
-import { assertSucceeded, WikiJsGraphQLError, type WikiJsApi } from '../api.js';
-import { identifier } from '../confirm.js';
-import { applyEdits } from '../edits.js';
-import * as adminGql from '../gql/admin.js';
-import * as gql from '../gql/pages.js';
-import { matchPages } from '../grep.js';
-import { guarded } from '../guard.js';
-import { outlineOf, sectionOf, windowOf } from '../markdown.js';
-import { listOf, objectOf } from '../normalize.js';
-import { assertWithinScope } from '../paths.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
@@ -34,6 +22,17 @@ import {
   tagParam,
   titleParam,
 } from '../schema.js';
+
+import { assertSucceeded, WikiJsGraphQLError, type WikiJsApi } from '../api.js';
+import { identifier } from '../confirm.js';
+import { applyEdits } from '../edits.js';
+import * as adminGql from '../gql/admin.js';
+import * as gql from '../gql/pages.js';
+import { matchPages } from '../grep.js';
+import { guarded } from '../guard.js';
+import { outlineOf, sectionOf, windowOf } from '../markdown.js';
+import { listOf, objectOf } from '../normalize.js';
+import { assertWithinScope } from '../paths.js';
 import type { ToolContext } from './context.js';
 
 /** Bounds `grep_pages`, which is the one tool that fetches many pages at once. */
@@ -153,7 +152,7 @@ export function registerPageTools(
         'short answer is never mistaken for a small wiki. Wiki.js has no offset ' +
         'for this query, so narrow with tags, locale, creator_id or author_id ' +
         'rather than paging. Returns no page content; use get_page for that.',
-      inputSchema: {
+      inputSchema: z.object({
         limit: limitParam.optional(),
         tags: z
           .array(tagParam)
@@ -172,7 +171,7 @@ export function registerPageTools(
           .optional()
           .describe('Sort field (default UPDATED).'),
         direction: z.enum(['ASC', 'DESC']).optional(),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({
@@ -233,7 +232,7 @@ export function registerPageTools(
         'either pass section to get one heading’s worth, or offset and ' +
         'max_chars to read the page in windows — a large page will otherwise be ' +
         'truncated to fit the result budget.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
@@ -267,7 +266,7 @@ export function registerPageTools(
           .describe(
             `With mode=content: how much to return (default ${DEFAULT_MAX_CHARS}).`
           ),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({
@@ -357,7 +356,7 @@ export function registerPageTools(
         'active engine so you can tell. If the engine is basic and you are ' +
         'looking for something written inside a page, use grep_pages instead. ' +
         'Results carry no excerpt; follow up with get_page.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().trim().min(1).max(500).describe('Search terms.'),
         path: z
           .string()
@@ -367,7 +366,7 @@ export function registerPageTools(
           .describe('Restrict to this path prefix.'),
         locale: localeParam.optional(),
         limit: limitParam.optional(),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ query, path, locale, limit }) =>
@@ -435,7 +434,7 @@ export function registerPageTools(
         'expensive path — one request per page — so narrow it with path_prefix, ' +
         'tags or locale, and keep max_pages small. Returns matching lines with ' +
         'context, not whole pages.',
-      inputSchema: {
+      inputSchema: z.object({
         pattern: patternParam,
         ignore_case: z
           .boolean()
@@ -465,7 +464,7 @@ export function registerPageTools(
           .max(10)
           .optional()
           .describe('Lines of context around each match (default 1).'),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({
@@ -609,7 +608,7 @@ export function registerPageTools(
         'and pages, "FOLDERS" only folders, "PAGES" only pages. Wiki.js offers ' +
         'no limit on this query, so a very wide level is truncated to the ' +
         'result budget.',
-      inputSchema: {
+      inputSchema: z.object({
         path: z
           .string()
           .trim()
@@ -622,7 +621,7 @@ export function registerPageTools(
           .boolean()
           .optional()
           .describe('Also return the path from the root down to this level.'),
-      },
+      }),
       annotations: { readOnlyHint: true },
     },
     async ({ path, locale, mode, include_ancestors }) =>
@@ -653,7 +652,7 @@ export function registerPageTools(
         'wiki’s link graph for one locale. Useful for finding what would break ' +
         'before moving or deleting a page. Wiki.js returns the whole graph at ' +
         'once and offers no filter, so on a large wiki this is truncated.',
-      inputSchema: { locale: localeParam.optional() },
+      inputSchema: z.object({ locale: localeParam.optional() }),
       annotations: { readOnlyHint: true },
     },
     async ({ locale }) =>
@@ -681,7 +680,7 @@ export function registerPageTools(
         'Wiki.js answers PageDuplicateCreate otherwise, and update_page is what ' +
         'changes an existing one. The editor decides how content is ' +
         'interpreted, so markdown source needs editor="markdown".',
-      inputSchema: {
+      inputSchema: z.object({
         path: pagePathParam,
         title: titleParam,
         content: contentParam,
@@ -696,7 +695,7 @@ export function registerPageTools(
             'Publish immediately (default true). False creates a draft.'
           ),
         is_private: z.boolean().optional(),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({
@@ -743,7 +742,7 @@ export function registerPageTools(
         'changed the page since it was read and refuses to clobber them; pass ' +
         'force=true to overwrite deliberately. Metadata fields can be changed ' +
         'on their own, without touching the text.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
@@ -784,7 +783,7 @@ export function registerPageTools(
             'Write even though the page changed since you read it. Overwrites ' +
               'the other person’s edit.'
           ),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({
@@ -915,14 +914,14 @@ export function registerPageTools(
         'Moves a page to another path, another locale, or both. Internal links ' +
         'pointing at the old path are NOT rewritten by Wiki.js — check ' +
         'list_page_links first if that matters.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
         destination_path: pagePathParam,
         destination_locale: localeParam.optional(),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { idempotentHint: false },
     },
     async ({
@@ -981,12 +980,12 @@ export function registerPageTools(
       description:
         'Deletes a page and its history. Wiki.js has no trash — this cannot be ' +
         'undone from here. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
     async ({ page_id, path, locale, confirm_token }) =>
@@ -1027,13 +1026,13 @@ export function registerPageTools(
         'body — converting markdown to "code" leaves the markdown source as raw ' +
         'HTML text. Use it to correct a page created with the wrong editor, not ' +
         'to reformat one.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
         editor: editorParam,
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       annotations: { idempotentHint: true },
     },
     async ({ page_id, path, locale, editor, confirm_token }) =>

@@ -1,5 +1,4 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-
+import type { CallToolResult } from '@modelcontextprotocol/server';
 import {
   ResponseTooLargeError,
   UnexpectedContentTypeError,
@@ -7,6 +6,7 @@ import {
   WikiJsGraphQLError,
   WikiJsOperationError,
 } from './api.js';
+
 import { PatternTimeoutError } from './grep.js';
 import { redactSensitive } from './normalize.js';
 import { PathScopeError } from './paths.js';

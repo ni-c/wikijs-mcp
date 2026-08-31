@@ -201,11 +201,22 @@ describe('the filter applied to a real server', () => {
     const { connect } = await import('./harness.js');
     const filtered = await connect(testConfig({ allowTools: 'get_page' }));
     const readOnly = await connect(testConfig({ readOnly: true }));
-    const a = await filtered.call('delete_page', { page_id: 1 });
-    const b = await readOnly.call('delete_page', { page_id: 1 });
-    expect(a.isError).toBe(true);
+    // SDK v2 answers a call to an unknown tool with a JSON-RPC error rather
+    // than a result carrying isError, so both calls reject. The equivalence is
+    // what this test is about and is unaffected.
+    const refusal = (harness: {
+      call: (name: string, args: object) => Promise<unknown>;
+    }) =>
+      harness.call('delete_page', { page_id: 1 }).then(
+        () => {
+          throw new Error('delete_page answered instead of being refused');
+        },
+        (error: Error) => error.message
+      );
+    const a = await refusal(filtered);
+    const b = await refusal(readOnly);
     expect(a).toEqual(b);
-    expect(JSON.stringify(a)).toMatch(/not found/i);
+    expect(a).toMatch(/not found/i);
     await filtered.close();
     await readOnly.close();
   });
