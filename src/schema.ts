@@ -36,6 +36,7 @@ export const pagePathParam = z
   .refine((value) => !value.split('/').some((part) => part === '..'), {
     message: 'a page path may not contain ".."',
   })
+  // eslint-disable-next-line no-control-regex -- matching them is the point
   .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), {
     message: 'a page path may not contain control characters',
   })

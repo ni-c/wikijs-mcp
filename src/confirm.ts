@@ -106,6 +106,7 @@ export function fingerprint(value: unknown): string {
  * is the wrong place to find that out gently.
  */
 export function identifier(value: string, role: string): string {
+  // eslint-disable-next-line no-control-regex -- matching them is the point
   if (/[\s\u0000-\u001f\u007f"'`\u200b-\u200f\u2060\ufeff]/.test(value)) {
     throw new Error(
       `wikijs-mcp: refusing to name a ${role} containing whitespace or quotes in a confirmation prompt`
@@ -116,6 +117,7 @@ export function identifier(value: string, role: string): string {
 
 /** Author-written prose is single-line by construction; prove it stayed that way. */
 function assertSingleLine(fragment: string, role: string): void {
+  // eslint-disable-next-line no-control-regex -- matching them is the point
   if (/[\u0000-\u001f\u007f]/.test(fragment)) {
     throw new Error(
       `wikijs-mcp: refusing to build a confirmation whose ${role} contains a control character`

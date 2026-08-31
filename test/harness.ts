@@ -122,7 +122,7 @@ export function stubFetch(routes: Routes = {}): FetchStub {
         status: reply.status ?? 200,
         headers: {
           'content-type': reply.contentType ?? 'application/json',
-          ...(reply.headers ?? {}),
+          ...reply.headers,
         },
       });
     })
