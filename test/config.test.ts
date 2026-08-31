@@ -186,6 +186,20 @@ describe('loadConfig', () => {
     );
     expect(error.mock.calls.flat().join(' ')).toContain('unencrypted');
   });
+
+  it.each([
+    ['bracketed IPv6', 'http://[::1]:3000'],
+    ['IPv4-mapped IPv6', 'http://[::ffff:127.0.0.1]:3000'],
+    ['a fully qualified localhost', 'http://localhost.:3000'],
+  ])('treats loopback spelled as %s as loopback', (_, url) => {
+    // URL.hostname hands back '[::1]' with its brackets and normalises
+    // ::ffff:127.0.0.1 to '[::ffff:7f00:1]'. The comparison this replaced
+    // checked for a bare '::1' and so warned about every one of these.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    loadConfig(env({ WIKIJS_URL: url, WIKIJS_TOKEN: 't' }));
+    expect(error.mock.calls.flat().join(' ')).not.toContain('unencrypted');
+    error.mockRestore();
+  });
 });
 
 describe('missingConfigMessage', () => {
