@@ -11,25 +11,38 @@ npm test          # unit tests against a stubbed GraphQL layer
 npm run build
 ```
 
-A minimal dev environment:
+## Running the integration suite
+
+The unit tests stub `fetch`, so they check that this server does what its author
+believed Wiki.js does. The integration suite checks what Wiki.js does. It spawns
+the built server over stdio against a throwaway Wiki.js in Docker and calls
+**every tool in the catalogue** — the deletes included — so the backend has to be
+one nobody wants: `test/integration/compose.yml` binds to `127.0.0.1` only, and
+the harness refuses any backend URL that is not on this machine.
 
 ```sh
-# A throwaway Wiki.js to develop against — never point this at a wiki you care
-# about, because scripts/sandbox/smoke.mjs exercises the destructive tools too.
-docker compose -f scripts/sandbox/docker-compose.yml up -d
-python3 scripts/sandbox/bootstrap.py     # finalizes setup, mints an API key
-
-npm run build
-node scripts/sandbox/smoke.mjs           # calls every tool once, end to end
-node scripts/sandbox/conflict.mjs        # proves the concurrent-edit guard
-
-docker compose -f scripts/sandbox/docker-compose.yml down -v
+npm run build     # the suite runs dist/index.js, not src/
+docker compose -f test/integration/compose.yml up -d --wait
+npm run test:integration
+docker compose -f test/integration/compose.yml down -v
 ```
+
+The `down -v` is not tidiness. The suite creates fixtures at fixed paths and
+needs an instance that has never been set up; against a second run it stops with
+a message saying so, because Wiki.js answers `/finalize` with a 404 once it is
+configured and that reads like a wrong URL rather than a wrong state.
+
+CI runs it on every pull request against the pinned image, and weekly against
+`requarks/wiki:2` — the first catches regressions here, the second catches
+Wiki.js moving. It is deliberately not a gate on `publish`; see the comment in
+`ci.yml`.
 
 ## Expectations
 
 - **Tests.** Behaviour changes come with a test that fails without the change.
-  CI runs the unit tests on Node 22 and 24, oxlint, prettier, `npm audit`, CodeQL and a Trivy scan of the container image.
+  CI runs the unit tests on Node 22 and 24, the integration suite against a
+  real Wiki.js, oxlint, prettier, `npm audit`, CodeQL and a Trivy scan of the
+  container image.
 - **Comments** explain constraints the code cannot show — not what the next line does.
 - **Security-sensitive areas** (config parsing, confirmation tokens, anything that
   builds a request URL): please describe the attack you are defending against, or the
