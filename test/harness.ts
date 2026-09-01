@@ -164,8 +164,6 @@ export interface Connected {
   ) => Promise<CallToolResult>;
   text: (name: string, args?: Record<string, unknown>) => Promise<string>;
   json: (name: string, args?: Record<string, unknown>) => Promise<never>;
-  /** Both halves of the two-call token. Only on a client without `elicit`. */
-  confirmed: (name: string, args?: Record<string, unknown>) => Promise<string>;
   close: () => Promise<void>;
 }
 
@@ -222,24 +220,35 @@ export async function connect(
     return JSON.parse(raw.slice(start)) as never;
   };
 
-  /** Runs a guarded tool through both halves of its confirmation dance. */
-  const confirmed = async (
-    name: string,
-    args: Record<string, unknown> = {}
-  ): Promise<string> => {
-    const first = await text(name, args);
-    return text(name, { ...args, confirm_token: tokenOf(first) });
-  };
+  return { client, prompts, call, text, json, close: () => client.close() };
+}
 
-  return {
-    client,
-    prompts,
-    call,
-    text,
-    json,
-    confirmed,
-    close: () => client.close(),
+/**
+ * Runs a guarded tool through both halves of its two-call token.
+ *
+ * Takes the client rather than living on what `connect` returns, so the
+ * signature is the same in every repository in this family — including the
+ * ones whose `connect` hands back a bare `Client`.
+ *
+ * Only meaningful on a client that declared no elicitation: with a dialog
+ * available the server asks instead of offering a token, which is the point.
+ */
+export async function confirmed(
+  client: Client,
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<string> {
+  const textOf = async (extra: Record<string, unknown>): Promise<string> => {
+    const result = (await client.callTool({
+      name,
+      arguments: { ...args, ...extra },
+    })) as CallToolResult;
+    return result.content
+      .map((part) => ('text' in part ? part.text : ''))
+      .join('\n');
   };
+  const first = await textOf({});
+  return textOf({ confirm_token: tokenOf(first) });
 }
 
 /** Names of the tools a server built from `config` actually registers. */

@@ -12,6 +12,7 @@ import { setResourceKey } from 'mcp-approval';
 
 import { identifier } from '../src/resource-key.js';
 import {
+  confirmed,
   connect,
   stubFetch,
   testConfig,
@@ -359,16 +360,16 @@ describe('H4/M1/M2 — the path scope covers what the documentation claims', () 
       'mutation DeleteAsset': { data: { assets: { deleteAsset: ok } } },
       'mutation RenameAsset': { data: { assets: { renameAsset: ok } } },
     });
-    const { confirmed, call, close } = await connect(scoped);
+    const { client, call, close } = await connect(scoped);
 
     const outside = await call('delete_asset', { asset_id: 42 });
     expect(outside.isError).toBe(true);
     expect(JSON.stringify(outside)).toContain('WIKIJS_ALLOWED_PATHS');
 
-    const inside = await confirmed('delete_asset', { asset_id: 7 });
+    const inside = await confirmed(client, 'delete_asset', { asset_id: 7 });
     expect(inside).toContain('Deleted asset 7');
 
-    const renamed = await confirmed('rename_asset', {
+    const renamed = await confirmed(client, 'rename_asset', {
       asset_id: 7,
       filename: 'better.png',
     });
