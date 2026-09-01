@@ -751,7 +751,12 @@ export function registerPageTools(
         'to the wrong place. Before writing, this checks whether somebody else ' +
         'changed the page since it was read and refuses to clobber them; pass ' +
         'force=true to overwrite deliberately. Metadata fields can be changed ' +
-        'on their own, without touching the text.',
+        'on their own, without touching the text.\n\n' +
+        'That refusal is a normal result and not an error: it explains what to ' +
+        'do — read the page again with get_page, redo the change on top of ' +
+        'what is now there, and write. Note that render_page also bumps the ' +
+        'page’s timestamp, so calling it between your read and your write ' +
+        'triggers the same refusal even though nobody else touched anything.',
       inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),

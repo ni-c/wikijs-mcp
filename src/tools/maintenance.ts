@@ -66,7 +66,14 @@ export function registerMaintenanceTools(
       description:
         'Forces Wiki.js to regenerate one page’s HTML from its source. The fix ' +
         'for a page whose rendering is stale after a theme or renderer change. ' +
-        'Changes no content and cannot lose anything.',
+        'Changes no content and cannot lose anything.\n\n' +
+        'It does, however, bump the page’s updatedAt — and update_page compares ' +
+        'that against when you last read the page, to catch somebody else ' +
+        'saving in between. So a render between your read and your write makes ' +
+        'update_page refuse *your own* next write, saying the page changed ' +
+        'after you read it. If that happens, call get_page again and then ' +
+        'write; nothing was lost. Better still, render after writing rather ' +
+        'than before.',
       inputSchema: z.object({ page_id: idParam }),
       annotations: WRITE_IDEMPOTENT,
     },
