@@ -8,6 +8,12 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded } from '../api.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
 import { fingerprint } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
@@ -48,7 +54,7 @@ export function registerUserTools(
           .optional(),
         limit: limitParam.optional(),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ filter, order_by, limit }) =>
       run(async () => {
@@ -82,7 +88,7 @@ export function registerUserTools(
           .max(255)
           .describe('Name or email fragment.'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ query }) =>
       run(async () => {
@@ -106,7 +112,7 @@ export function registerUserTools(
         'whether two-factor authentication is active. No credential of any kind ' +
         'is returned — Wiki.js does not expose one.',
       inputSchema: z.object({ user_id: idParam }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ user_id }) =>
       run(async () => {
@@ -158,7 +164,7 @@ export function registerUserTools(
         send_welcome_email: z.boolean().optional(),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async (
       {
@@ -252,7 +258,7 @@ export function registerUserTools(
         job_title: z.string().trim().max(255).optional(),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: true },
+      annotations: DESTRUCTIVE,
     },
     async (
       { user_id, email, name, groups, location, job_title, confirm_token },
@@ -343,7 +349,7 @@ export function registerUserTools(
         ),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ user_id, replace_with_user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -396,7 +402,7 @@ export function registerUserTools(
       }),
       // Not idempotent although the end state is: the confirmation token is
       // single-use, so the second identical call needs a fresh one.
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ user_id, active, confirm_token }, mcp) =>
       run(async () =>
@@ -444,7 +450,7 @@ export function registerUserTools(
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -490,7 +496,7 @@ export function registerUserTools(
           .describe('True to require 2FA, false to remove it.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ user_id, enabled, confirm_token }, mcp) =>
       run(async () =>
@@ -539,7 +545,7 @@ export function registerUserTools(
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ user_id, confirm_token }, mcp) =>
       run(async () =>

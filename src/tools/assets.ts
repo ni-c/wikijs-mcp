@@ -2,6 +2,12 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded, type WikiJsApi } from '../api.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
 import { identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
@@ -204,7 +210,7 @@ export function registerAssetTools(
           .optional()
           .describe('Restrict to images or to non-image files.'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ folder_id, kind }) =>
       run(async () => {
@@ -237,7 +243,7 @@ export function registerAssetTools(
           .optional()
           .describe('Parent folder id. 0 (default) is the root.'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ parent_folder_id }) =>
       run(async () => {
@@ -283,7 +289,7 @@ export function registerAssetTools(
           .optional()
           .describe('Target folder id. 0 (default) is the root.'),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async ({ filename, content_base64, folder_id }) =>
       run(async () => {
@@ -358,7 +364,7 @@ export function registerAssetTools(
           .optional()
           .describe('Display name (defaults to the slug).'),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async ({ parent_folder_id, slug, name }) =>
       run(async () => {
@@ -397,7 +403,7 @@ export function registerAssetTools(
         filename: filenameParam.describe('New file name, including extension.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: true },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ asset_id, filename, confirm_token }, mcp) =>
       run(async () => {
@@ -448,7 +454,7 @@ export function registerAssetTools(
         asset_id: idParam.describe('Asset id from list_assets.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ asset_id, confirm_token }, mcp) =>
       run(async () => {

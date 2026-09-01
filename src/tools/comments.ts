@@ -15,6 +15,7 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY, WRITE } from './annotations.js';
 import { fingerprint } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import * as pageGql from '../gql/pages.js';
@@ -69,7 +70,7 @@ export function registerCommentTools(
         path: pagePathParam,
         locale: localeParam.optional(),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ path, locale }) =>
       run(async () => {
@@ -95,7 +96,7 @@ export function registerCommentTools(
       description:
         'Returns a single comment by id, with its source and its rendered HTML.',
       inputSchema: z.object({ comment_id: idParam }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ comment_id }) =>
       run(async () => {
@@ -126,7 +127,7 @@ export function registerCommentTools(
         content: commentBodyParam,
         reply_to: idParam.optional().describe('Comment id this replies to.'),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async ({ page_id, content, reply_to }) =>
       run(async () => {
@@ -174,7 +175,7 @@ export function registerCommentTools(
         content: commentBodyParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ comment_id, content, confirm_token }, mcp) =>
       run(async () => {
@@ -224,7 +225,7 @@ export function registerCommentTools(
         comment_id: idParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ comment_id, confirm_token }, mcp) =>
       run(async () => {

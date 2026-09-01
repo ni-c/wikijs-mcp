@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -35,7 +36,7 @@ export function registerSystemTools(
         'the API key work at all. Fields describing the host filesystem and ' +
         'database host are deliberately not requested.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async () =>
       run(async () => {
@@ -67,7 +68,7 @@ export function registerSystemTools(
               'every locale it could download otherwise — over a hundred.'
           ),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ installed_only }) =>
       run(async () => {
@@ -103,7 +104,7 @@ export function registerSystemTools(
         'hand and is not the page tree — get_page_tree is what reflects the ' +
         'pages that actually exist.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async () =>
       run(async () => {
@@ -129,7 +130,7 @@ export function registerSystemTools(
         'descriptions, so nothing written inside a page is searchable until a ' +
         'real engine is configured and the index rebuilt.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async () =>
       run(async () => {
@@ -161,7 +162,7 @@ export function registerSystemTools(
         'only a truncated form of each key and never returns the secret, so ' +
         'nothing here can be used to authenticate.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async () =>
       run(async () => {
@@ -183,7 +184,7 @@ export function registerSystemTools(
         'file dumps — with their sync status and last error. Credentials in ' +
         'their configuration are redacted.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async () =>
       run(async () => {
@@ -213,7 +214,7 @@ export function registerSystemTools(
         key_id: idParam.describe('Key id from list_api_keys.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ key_id, confirm_token }, mcp) =>
       run(async () =>
@@ -261,7 +262,7 @@ export function registerSystemTools(
           .describe('True to enable the API, false to disable it.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ enabled, confirm_token }, mcp) =>
       run(async () =>

@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
@@ -38,7 +39,7 @@ export function registerTagTools(
         'often a better starting point than search — feed a tag back into ' +
         'list_pages to see what carries it.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async () =>
       run(async () => {
@@ -70,7 +71,7 @@ export function registerTagTools(
           .max(255)
           .describe('Fragment to match against tag names.'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ query }) =>
       run(async () => {
@@ -104,7 +105,7 @@ export function registerTagTools(
         title: titleParam.describe('New display title.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: true },
+      annotations: DESTRUCTIVE,
     },
     async ({ tag_id, tag, title, confirm_token }, mcp) =>
       run(async () => {
@@ -154,7 +155,7 @@ export function registerTagTools(
         tag_id: idParam.describe('Tag id from list_tags.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ tag_id, confirm_token }, mcp) =>
       run(async () => {

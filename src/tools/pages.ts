@@ -28,6 +28,12 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded, WikiJsGraphQLError, type WikiJsApi } from '../api.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
 import { identifier } from '../resource-key.js';
 import { applyEdits } from '../edits.js';
 import * as adminGql from '../gql/admin.js';
@@ -176,7 +182,7 @@ export function registerPageTools(
           .describe('Sort field (default UPDATED).'),
         direction: z.enum(['ASC', 'DESC']).optional(),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({
       limit,
@@ -271,7 +277,7 @@ export function registerPageTools(
             `With mode=content: how much to return (default ${DEFAULT_MAX_CHARS}).`
           ),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({
       page_id,
@@ -371,7 +377,7 @@ export function registerPageTools(
         locale: localeParam.optional(),
         limit: limitParam.optional(),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ query, path, locale, limit }) =>
       run(async () => {
@@ -469,7 +475,7 @@ export function registerPageTools(
           .optional()
           .describe('Lines of context around each match (default 1).'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({
       pattern,
@@ -626,7 +632,7 @@ export function registerPageTools(
           .optional()
           .describe('Also return the path from the root down to this level.'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ path, locale, mode, include_ancestors }) =>
       run(async () => {
@@ -657,7 +663,7 @@ export function registerPageTools(
         'before moving or deleting a page. Wiki.js returns the whole graph at ' +
         'once and offers no filter, so on a large wiki this is truncated.',
       inputSchema: z.object({ locale: localeParam.optional() }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ locale }) =>
       run(async () => {
@@ -700,7 +706,7 @@ export function registerPageTools(
           ),
         is_private: z.boolean().optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async ({
       path,
@@ -788,7 +794,7 @@ export function registerPageTools(
               'the other person’s edit.'
           ),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async ({
       page_id,
@@ -926,7 +932,7 @@ export function registerPageTools(
         destination_locale: localeParam.optional(),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async (
       {
@@ -996,7 +1002,7 @@ export function registerPageTools(
         locale: localeParam.optional(),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ page_id, path, locale, confirm_token }, mcp) =>
       run(async () => {
@@ -1046,7 +1052,7 @@ export function registerPageTools(
         editor: editorParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: true },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ page_id, path, locale, editor, confirm_token }, mcp) =>
       run(async () => {

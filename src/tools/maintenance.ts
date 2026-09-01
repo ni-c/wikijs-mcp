@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
+import { DESTRUCTIVE, WRITE_IDEMPOTENT } from './annotations.js';
 import { identifier } from '../resource-key.js';
 import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
@@ -67,7 +68,7 @@ export function registerMaintenanceTools(
         'for a page whose rendering is stale after a theme or renderer change. ' +
         'Changes no content and cannot lose anything.',
       inputSchema: z.object({ page_id: idParam }),
-      annotations: { idempotentHint: true },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ page_id }) =>
       run(async () => {
@@ -91,7 +92,7 @@ export function registerMaintenanceTools(
         'lost, but every page has to be rendered again on first access, so a ' +
         'busy instance gets slower for a while. Requires a confirmation token.',
       inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ confirm_token }, mcp) =>
       run(async () =>
@@ -130,7 +131,7 @@ export function registerMaintenanceTools(
         'present, usually after a bulk import or a database edit. Requires a ' +
         'confirmation token.',
       inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ confirm_token }, mcp) =>
       run(async () =>
@@ -172,7 +173,7 @@ export function registerMaintenanceTools(
         'empty and search silently returns nothing until this runs. On the ' +
         'basic engine it does nothing. Requires a confirmation token.',
       inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ confirm_token }, mcp) =>
       run(async () =>
@@ -216,7 +217,7 @@ export function registerMaintenanceTools(
         older_than: olderThanParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ older_than, confirm_token }, mcp) =>
       run(async () => {
@@ -264,7 +265,7 @@ export function registerMaintenanceTools(
         target_locale: localeParam.describe('Locale to move pages into.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ source_locale, target_locale, confirm_token }, mcp) =>
       run(async () => {

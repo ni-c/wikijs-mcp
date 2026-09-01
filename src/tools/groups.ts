@@ -2,6 +2,12 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
 import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
@@ -61,7 +67,7 @@ export function registerGroupTools(
         filter: z.string().trim().max(255).optional(),
         order_by: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional(),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ filter, order_by }) =>
       run(async () => {
@@ -89,7 +95,7 @@ export function registerGroupTools(
         'what" — and it is what update_group needs as its starting point, ' +
         'because that mutation replaces the whole rule set.',
       inputSchema: z.object({ group_id: idParam }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ group_id }) =>
       run(async () => {
@@ -116,7 +122,7 @@ export function registerGroupTools(
       inputSchema: z.object({
         name: z.string().trim().min(1).max(255).describe('Group name.'),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE,
     },
     async ({ name }) =>
       run(async () => {
@@ -162,7 +168,7 @@ export function registerGroupTools(
           .describe('Where members land after signing in (default "/").'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: true },
+      annotations: DESTRUCTIVE,
     },
     async (
       {
@@ -233,7 +239,7 @@ export function registerGroupTools(
         group_id: idParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ group_id, confirm_token }, mcp) =>
       run(async () =>
@@ -277,7 +283,7 @@ export function registerGroupTools(
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
     },
     async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -323,7 +329,7 @@ export function registerGroupTools(
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>

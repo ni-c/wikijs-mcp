@@ -171,6 +171,81 @@ describe('write tools under read-only', () => {
     }
     await close();
   });
+
+  it('declares all four annotation hints on every tool', async () => {
+    // Not a style rule. Two of the four default to a *stronger* claim than
+    // silence suggests: the specification gives destructiveHint and
+    // openWorldHint a default of true, so a tool that omits them announces
+    // itself as destructive and open-world. Twenty-two write tools here said
+    // only idempotentHint and inherited the rest.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const hints = [
+      'readOnlyHint',
+      'destructiveHint',
+      'idempotentHint',
+      'openWorldHint',
+    ] as const;
+    for (const tool of tools) {
+      for (const hint of hints) {
+        expect(typeof tool.annotations?.[hint], `${tool.name}.${hint}`).toBe(
+          'boolean'
+        );
+      }
+    }
+    await close();
+  });
+
+  it('lets page history decide what counts as destructive', async () => {
+    // The distinction a wiki makes and a bookmark manager cannot. Wiki.js
+    // keeps every page version, so editing a page is recoverable and
+    // update_page is not destructive. Comments have no history at all, so
+    // update_comment is. Same verb, opposite answers, decided by what the
+    // store remembers rather than by the shape of the call.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    expect(byName.get('update_page')?.destructiveHint).toBe(false);
+    expect(byName.get('update_comment')?.destructiveHint).toBe(true);
+    await close();
+  });
+
+  it('does not warn about rebuilding something derived', async () => {
+    // These four recompute a cache, a tree, an index or a rendering. They
+    // lose nothing by construction — which is also why they stop asking for
+    // a confirmation.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    for (const name of [
+      'flush_page_cache',
+      'rebuild_page_tree',
+      'rebuild_search_index',
+      'render_page',
+    ]) {
+      expect(byName.get(name)?.destructiveHint, name).toBe(false);
+      expect(byName.get(name)?.idempotentHint, name).toBe(true);
+    }
+    await close();
+  });
+
+  it('warns where a wholesale replacement leaves no trace', async () => {
+    // update_group replaces a permission set, update_user a group list,
+    // update_tag a name on every page carrying it, reset_user_password a
+    // credential the person chose. None of those has a history to go back to.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    for (const name of [
+      'update_group',
+      'update_user',
+      'update_tag',
+      'reset_user_password',
+    ]) {
+      expect(byName.get(name)?.destructiveHint, name).toBe(true);
+    }
+    await close();
+  });
 });
 
 describe('every tool is described', () => {

@@ -84,9 +84,13 @@ function escapeCell(text) {
 }
 
 function renderTool(tool) {
+  // `?? true` rather than a plain read: the specification gives
+  // destructiveHint a default of *true*, so a tool that omits it is claiming
+  // to be destructive. Reading it as falsy would have this page understate
+  // exactly the tools whose annotation somebody forgot.
   const kind = tool.annotations?.readOnlyHint
     ? 'read-only'
-    : tool.annotations?.destructiveHint
+    : (tool.annotations?.destructiveHint ?? true)
       ? 'write, destructive'
       : 'write';
   // Generated from the same constant the filter reads, so "which tools does

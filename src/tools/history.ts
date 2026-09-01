@@ -14,6 +14,7 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded, type WikiJsApi } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 import { unifiedDiff } from '../diff.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
@@ -106,7 +107,7 @@ export function registerHistoryTools(
           .optional()
           .describe('Entries per page (default 50).'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ page_id, path, locale, page, page_size }) =>
       run(async () => {
@@ -146,7 +147,7 @@ export function registerHistoryTools(
         page_id: idParam,
         version_id: idParam.describe('Version id from list_page_history.'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ page_id, version_id }) =>
       run(async () => {
@@ -181,7 +182,7 @@ export function registerHistoryTools(
           .optional()
           .describe('Unchanged lines shown around each change (default 3).'),
       }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ page_id, from_version, to_version, context_lines }) =>
       run(async () => {
@@ -244,7 +245,7 @@ export function registerHistoryTools(
         'what update_page points at when it refuses to write. Shows who saved ' +
         'it and when, so the change can be redone on top instead of discarded.',
       inputSchema: z.object({ page_id: idParam }),
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY,
     },
     async ({ page_id }) =>
       run(async () => {
@@ -276,7 +277,7 @@ export function registerHistoryTools(
         version_id: idParam.describe('Version id from list_page_history.'),
         confirm_token: confirmTokenParam.optional(),
       }),
-      annotations: { destructiveHint: true, idempotentHint: false },
+      annotations: DESTRUCTIVE,
     },
     async ({ page_id, version_id, confirm_token }, mcp) =>
       run(async () => {

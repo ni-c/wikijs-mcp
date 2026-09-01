@@ -415,7 +415,7 @@ Rolls a page back to a stored version. The current content is not lost — it be
 
 ### `update_tag`
 
-**Rename a tag** — write
+**Rename a tag** — write, destructive
 
 Changes a tag’s name or display title across every page carrying it. Renaming affects all of them at once, which is the point and also the risk, so it needs a confirmation token.
 
@@ -538,7 +538,7 @@ Creates an account. For a local account supply a password, or set send_welcome_e
 
 ### `update_user`
 
-**Update a user** — write
+**Update a user** — write, destructive
 
 Changes an account’s details or its group membership. The groups list replaces the existing one rather than adding to it — use assign_user_to_group for a single addition.
 
@@ -601,7 +601,7 @@ Switches an account’s second factor. Turning it OFF weakens that account and i
 
 ### `reset_user_password`
 
-**Reset a user’s password** — write
+**Reset a user’s password** — write, destructive
 
 Starts Wiki.js’ own password reset for a local account, which emails the user a link. No password is chosen or returned here. Requires a confirmation token.
 
@@ -622,7 +622,7 @@ Creates an empty group. It starts with no permissions and no page rules, so it g
 
 ### `update_group`
 
-**Update a group’s permissions** — write
+**Update a group’s permissions** — write, destructive
 
 Replaces a group’s name, permissions and page rules wholesale — this is not a partial update, and omitting a rule deletes it. Read the group with get_group first and send back the full set with your change applied. Requires a confirmation token, because this is the call that decides who can read and edit the wiki.
 
