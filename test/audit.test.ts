@@ -12,10 +12,10 @@ import { setResourceKey } from 'mcp-approval';
 
 import { identifier } from '../src/resource-key.js';
 import {
-  confirmed,
   connect,
   stubFetch,
   testConfig,
+  tokenOf,
   type Routes,
 } from './harness.js';
 
@@ -131,9 +131,6 @@ describe('H2/H3/L2 — a confirmation binds content, not a summary of it', () =>
     'mutation UpdateUser': { data: { users: { update: ok } } },
     'mutation UpdateTag': { data: { pages: { updateTag: ok } } },
   };
-
-  const tokenOf = (text: string): string | undefined =>
-    /confirm_token="([0-9a-f]{32})"/.exec(text)?.[1];
 
   it('will not swap one permission for another of equal count', async () => {
     // The whole instance hangs off this: ["read:pages"] and ["manage:system"]
@@ -362,16 +359,16 @@ describe('H4/M1/M2 — the path scope covers what the documentation claims', () 
       'mutation DeleteAsset': { data: { assets: { deleteAsset: ok } } },
       'mutation RenameAsset': { data: { assets: { renameAsset: ok } } },
     });
-    const { text, call, close } = await connect(scoped);
+    const { confirmed, call, close } = await connect(scoped);
 
     const outside = await call('delete_asset', { asset_id: 42 });
     expect(outside.isError).toBe(true);
     expect(JSON.stringify(outside)).toContain('WIKIJS_ALLOWED_PATHS');
 
-    const inside = await confirmed(text, 'delete_asset', { asset_id: 7 });
+    const inside = await confirmed('delete_asset', { asset_id: 7 });
     expect(inside).toContain('Deleted asset 7');
 
-    const renamed = await confirmed(text, 'rename_asset', {
+    const renamed = await confirmed('rename_asset', {
       asset_id: 7,
       filename: 'better.png',
     });

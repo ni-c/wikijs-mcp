@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { confirmed, connect, stubFetch, type Routes } from './harness.js';
+import { connect, stubFetch, type Routes } from './harness.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -99,15 +99,15 @@ describe('page tree, links and tags', () => {
       'mutation UpdateTag': { data: { pages: { updateTag: ok } } },
       'mutation DeleteTag': { data: { pages: { deleteTag: ok } } },
     });
-    const { text, close } = await connect();
+    const { confirmed, close } = await connect();
     expect(
-      await confirmed(text, 'update_tag', {
+      await confirmed('update_tag', {
         tag_id: 1,
         tag: 'new',
         title: 'New',
       })
     ).toContain('Renamed tag 1');
-    expect(await confirmed(text, 'delete_tag', { tag_id: 1 })).toContain(
+    expect(await confirmed('delete_tag', { tag_id: 1 })).toContain(
       'Deleted tag 1'
     );
     expect(stub.calls.filter((c) => c.query.includes('mutation'))).toHaveLength(
@@ -257,9 +257,9 @@ describe('history tools', () => {
 
   it('restores a version behind a confirmation', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
+    const { confirmed, close } = await connect();
     expect(
-      await confirmed(text, 'restore_page_version', {
+      await confirmed('restore_page_version', {
         page_id: 7,
         version_id: 8,
       })
@@ -308,14 +308,14 @@ describe('asset tools', () => {
 
   it('creates a folder, renames and deletes an asset', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
+    const { confirmed, text, close } = await connect();
     expect(await text('create_asset_folder', { slug: 'img' })).toContain(
       'Created asset folder'
     );
     expect(
-      await confirmed(text, 'rename_asset', { asset_id: 3, filename: 'b.png' })
+      await confirmed('rename_asset', { asset_id: 3, filename: 'b.png' })
     ).toContain('Renamed asset 3');
-    expect(await confirmed(text, 'delete_asset', { asset_id: 3 })).toContain(
+    expect(await confirmed('delete_asset', { asset_id: 3 })).toContain(
       'Deleted asset 3'
     );
     await close();
@@ -407,16 +407,16 @@ describe('comment tools', () => {
 
   it('edits and deletes a comment', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
+    const { confirmed, close } = await connect();
     expect(
-      await confirmed(text, 'update_comment', {
+      await confirmed('update_comment', {
         comment_id: 4,
         content: 'edited',
       })
     ).toContain('Updated comment 4');
-    expect(
-      await confirmed(text, 'delete_comment', { comment_id: 4 })
-    ).toContain('Deleted comment 4');
+    expect(await confirmed('delete_comment', { comment_id: 4 })).toContain(
+      'Deleted comment 4'
+    );
     await close();
   });
 });
@@ -512,28 +512,28 @@ describe('user and group tools', () => {
 
   it('carries every user write through to the mutation once confirmed', async () => {
     const stub = stubFetch(routes);
-    const { text, close } = await connect();
+    const { confirmed, close } = await connect();
+    expect(await confirmed('update_user', { user_id: 1, name: 'X' })).toContain(
+      'Updated user 1'
+    );
     expect(
-      await confirmed(text, 'update_user', { user_id: 1, name: 'X' })
+      await confirmed('update_user', { user_id: 1, groups: [2, 3] })
     ).toContain('Updated user 1');
     expect(
-      await confirmed(text, 'update_user', { user_id: 1, groups: [2, 3] })
-    ).toContain('Updated user 1');
-    expect(
-      await confirmed(text, 'delete_user', {
+      await confirmed('delete_user', {
         user_id: 1,
         replace_with_user_id: 2,
       })
     ).toContain('Deleted user 1');
-    expect(await confirmed(text, 'verify_user', { user_id: 1 })).toContain(
+    expect(await confirmed('verify_user', { user_id: 1 })).toContain(
       'User 1 is verified'
     );
     expect(
-      await confirmed(text, 'set_user_tfa', { user_id: 1, enabled: false })
+      await confirmed('set_user_tfa', { user_id: 1, enabled: false })
     ).toContain('now off');
-    expect(
-      await confirmed(text, 'reset_user_password', { user_id: 1 })
-    ).toContain('Password reset started');
+    expect(await confirmed('reset_user_password', { user_id: 1 })).toContain(
+      'Password reset started'
+    );
     for (const op of [
       'UpdateUser',
       'DeleteUser',
@@ -572,8 +572,8 @@ describe('user and group tools', () => {
         data: { users: { create: { ...ok, user: null } } },
       },
     });
-    const { text, close } = await connect();
-    await confirmed(text, 'create_user', {
+    const { confirmed, close } = await connect();
+    await confirmed('create_user', {
       email: 'new@example.test',
       name: 'New',
       provider_key: 'azure',
@@ -600,8 +600,8 @@ describe('user and group tools', () => {
       },
       'query SearchUsers': { data: { users: { search: [] } } },
     });
-    const { text, close } = await connect();
-    const out = await confirmed(text, 'create_user', {
+    const { confirmed, close } = await connect();
+    const out = await confirmed('create_user', {
       email: 'ghost@example.test',
       name: 'Ghost',
     });
@@ -611,9 +611,9 @@ describe('user and group tools', () => {
 
   it('activates and deactivates through the right mutation', async () => {
     const stub = stubFetch(routes);
-    const { text, close } = await connect();
-    await confirmed(text, 'set_user_active', { user_id: 1, active: true });
-    await confirmed(text, 'set_user_active', { user_id: 1, active: false });
+    const { confirmed, close } = await connect();
+    await confirmed('set_user_active', { user_id: 1, active: true });
+    await confirmed('set_user_active', { user_id: 1, active: false });
     expect(stub.calls.some((c) => c.query.includes('ActivateUser'))).toBe(true);
     expect(stub.calls.some((c) => c.query.includes('DeactivateUser'))).toBe(
       true
@@ -658,23 +658,23 @@ describe('user and group tools', () => {
 
   it('gates the group writes that decide access', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
+    const { confirmed, close } = await connect();
     expect(
-      await confirmed(text, 'update_group', {
+      await confirmed('update_group', {
         group_id: 1,
         name: 'Admins',
         permissions: ['read:pages'],
         page_rules: [],
       })
     ).toContain('Updated group 1');
-    expect(await confirmed(text, 'delete_group', { group_id: 1 })).toContain(
+    expect(await confirmed('delete_group', { group_id: 1 })).toContain(
       'Deleted group 1'
     );
     expect(
-      await confirmed(text, 'assign_user_to_group', { group_id: 1, user_id: 2 })
+      await confirmed('assign_user_to_group', { group_id: 1, user_id: 2 })
     ).toContain('Added user 2');
     expect(
-      await confirmed(text, 'unassign_user_from_group', {
+      await confirmed('unassign_user_from_group', {
         group_id: 1,
         user_id: 2,
       })
@@ -790,9 +790,9 @@ describe('system and maintenance tools', () => {
 
   it('gates the one maintenance operation that loses something', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
+    const { confirmed, close } = await connect();
     expect(
-      await confirmed(text, 'purge_page_history', { older_than: 'P1Y' })
+      await confirmed('purge_page_history', { older_than: 'P1Y' })
     ).toContain('Purged page versions');
     await close();
   });
@@ -867,8 +867,8 @@ describe('system and maintenance tools', () => {
 
   it('reports how many pages a migration moved', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
-    const out = await confirmed(text, 'migrate_pages_locale', {
+    const { confirmed, close } = await connect();
+    const out = await confirmed('migrate_pages_locale', {
       source_locale: 'de',
       target_locale: 'en',
     });
@@ -878,13 +878,13 @@ describe('system and maintenance tools', () => {
 
   it('gates the two tools that can lock the server out of the wiki', async () => {
     stubFetch(routes);
-    const { text, close } = await connect();
-    expect(await confirmed(text, 'revoke_api_key', { key_id: 1 })).toContain(
+    const { confirmed, close } = await connect();
+    expect(await confirmed('revoke_api_key', { key_id: 1 })).toContain(
       'Revoked API key 1'
     );
-    expect(
-      await confirmed(text, 'set_api_state', { enabled: false })
-    ).toContain('now disabled');
+    expect(await confirmed('set_api_state', { enabled: false })).toContain(
+      'now disabled'
+    );
     await close();
   });
 

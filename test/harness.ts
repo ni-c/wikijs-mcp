@@ -131,9 +131,20 @@ export function stubFetch(routes: Routes = {}): FetchStub {
   return { calls };
 }
 
-/** Connects an in-memory client to a server built from `config`. */
 /** How a client that can show a dialog answers it. */
 export type ElicitBehaviour = 'accept' | 'decline' | 'cancel';
+
+/** The confirmation token a guarded tool handed back on its first call. */
+export function tokenOf(text: string): string {
+  const match = /confirm_token="([0-9a-f]{32})"/.exec(text);
+  if (!match?.[1]) {
+    throw new Error(
+      `no confirm_token in the result — did the client declare elicitation? ` +
+        `Got: ${text.slice(0, 300)}`
+    );
+  }
+  return match[1];
+}
 
 /**
  * Connects a client to the real server.
@@ -143,11 +154,9 @@ export type ElicitBehaviour = 'accept' | 'decline' | 'cancel';
  * With it, the client answers the dialog and `prompts` records what the server
  * put in front of the user.
  */
-export async function connect(
-  config: Config = testConfig(),
-  elicit?: ElicitBehaviour
-): Promise<{
+export interface Connected {
   client: Client;
+  /** Every message the server put in front of the user, in order. */
   prompts: string[];
   call: (
     name: string,
@@ -155,8 +164,15 @@ export async function connect(
   ) => Promise<CallToolResult>;
   text: (name: string, args?: Record<string, unknown>) => Promise<string>;
   json: (name: string, args?: Record<string, unknown>) => Promise<never>;
+  /** Both halves of the two-call token. Only on a client without `elicit`. */
+  confirmed: (name: string, args?: Record<string, unknown>) => Promise<string>;
   close: () => Promise<void>;
-}> {
+}
+
+export async function connect(
+  config: Config = testConfig(),
+  elicit?: ElicitBehaviour
+): Promise<Connected> {
   const server = createServer(config);
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
@@ -206,7 +222,24 @@ export async function connect(
     return JSON.parse(raw.slice(start)) as never;
   };
 
-  return { client, prompts, call, text, json, close: () => client.close() };
+  /** Runs a guarded tool through both halves of its confirmation dance. */
+  const confirmed = async (
+    name: string,
+    args: Record<string, unknown> = {}
+  ): Promise<string> => {
+    const first = await text(name, args);
+    return text(name, { ...args, confirm_token: tokenOf(first) });
+  };
+
+  return {
+    client,
+    prompts,
+    call,
+    text,
+    json,
+    confirmed,
+    close: () => client.close(),
+  };
 }
 
 /** Names of the tools a server built from `config` actually registers. */
@@ -215,18 +248,4 @@ export async function toolNames(config: Config): Promise<string[]> {
   const { tools } = await client.listTools();
   await close();
   return tools.map((tool) => tool.name);
-}
-
-/** Runs a guarded tool through its confirmation dance and returns the result. */
-export async function confirmed(
-  text: (name: string, args?: Record<string, unknown>) => Promise<string>,
-  name: string,
-  args: Record<string, unknown>
-): Promise<string> {
-  const prompt = await text(name, args);
-  const token = /confirm_token="([0-9a-f]{32})"/.exec(prompt)?.[1];
-  if (token === undefined) {
-    throw new Error(`${name} offered no confirmation token: ${prompt}`);
-  }
-  return text(name, { ...args, confirm_token: token });
 }
