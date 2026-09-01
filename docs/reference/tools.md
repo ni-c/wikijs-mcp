@@ -351,7 +351,7 @@ Creates a page. The path must not already exist in this locale — Wiki.js answe
 
 **Update a page** — write, **essential**
 
-Changes a page. Pass content to replace the whole body, or edits for surgical find-and-replace — each edit’s old_text must appear exactly once, and an ambiguous or missing match is refused rather than applied to the wrong place. Before writing, this checks whether somebody else changed the page since it was read and refuses to clobber them; pass force=true to overwrite deliberately. Metadata fields can be changed on their own, without touching the text.
+Changes a page. Pass content to replace the whole body, or edits for surgical find-and-replace — each edit’s old_text must appear exactly once, and an ambiguous or missing match is refused rather than applied to the wrong place. Before writing, this checks whether somebody else changed the page since it was read and refuses to clobber them; pass force=true to overwrite deliberately. Metadata fields can be changed on their own, without touching the text. That refusal is a normal result and not an error: it explains what to do — read the page again with get_page, redo the change on top of what is now there, and write. Note that render_page also bumps the page’s timestamp, so calling it between your read and your write triggers the same refusal even though nobody else touched anything.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -706,7 +706,7 @@ Switches Wiki.js’ whole API on or off. Turning it off disables every API key a
 
 **Re-render a page** — write
 
-Forces Wiki.js to regenerate one page’s HTML from its source. The fix for a page whose rendering is stale after a theme or renderer change. Changes no content and cannot lose anything.
+Forces Wiki.js to regenerate one page’s HTML from its source. The fix for a page whose rendering is stale after a theme or renderer change. Changes no content and cannot lose anything. It does, however, bump the page’s updatedAt — and update_page compares that against when you last read the page, to catch somebody else saving in between. So a render between your read and your write makes update_page refuse *your own* next write, saying the page changed after you read it. If that happens, call get_page again and then write; nothing was lost. Better still, render after writing rather than before.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
