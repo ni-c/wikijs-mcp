@@ -8,7 +8,9 @@ import {
 } from '../src/grep.js';
 import { redactSensitive, REDACTED } from '../src/normalize.js';
 import { budgetedList, MAX_RESULT_BYTES } from '../src/result.js';
-import { identifier, setResourceKey } from '../src/confirm.js';
+import { setResourceKey } from 'mcp-approval';
+
+import { identifier } from '../src/resource-key.js';
 import {
   confirmed,
   connect,

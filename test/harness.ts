@@ -131,8 +131,23 @@ export function stubFetch(routes: Routes = {}): FetchStub {
 }
 
 /** Connects an in-memory client to a server built from `config`. */
-export async function connect(config: Config = testConfig()): Promise<{
+/** How a client that can show a dialog answers it. */
+export type ElicitBehaviour = 'accept' | 'decline' | 'cancel';
+
+/**
+ * Connects a client to the real server.
+ *
+ * Without `elicit` the client declares no elicitation capability, which is the
+ * case the two-call token exists for and what every other test here drives.
+ * With it, the client answers the dialog and `prompts` records what the server
+ * put in front of the user.
+ */
+export async function connect(
+  config: Config = testConfig(),
+  elicit?: ElicitBehaviour
+): Promise<{
   client: Client;
+  prompts: string[];
   call: (
     name: string,
     args?: Record<string, unknown>
@@ -144,7 +159,20 @@ export async function connect(config: Config = testConfig()): Promise<{
   const server = createServer(config);
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: 'test', version: '1.0.0' });
+  const prompts: string[] = [];
+  const client = new Client(
+    { name: 'test', version: '1.0.0' },
+    elicit === undefined ? {} : { capabilities: { elicitation: {} } }
+  );
+  if (elicit !== undefined) {
+    client.setRequestHandler('elicitation/create', (request) => {
+      const params = request.params as { message?: string };
+      prompts.push(params.message ?? '');
+      if (elicit === 'cancel') return { action: 'cancel' };
+      if (elicit === 'decline') return { action: 'decline' };
+      return { action: 'accept', content: { confirm: true } };
+    });
+  }
   await Promise.all([
     client.connect(clientTransport),
     server.connect(serverTransport),
@@ -177,7 +205,7 @@ export async function connect(config: Config = testConfig()): Promise<{
     return JSON.parse(raw.slice(start)) as never;
   };
 
-  return { client, call, text, json, close: () => client.close() };
+  return { client, prompts, call, text, json, close: () => client.close() };
 }
 
 /** Names of the tools a server built from `config` actually registers. */

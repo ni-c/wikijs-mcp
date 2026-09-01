@@ -1,7 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 
 import type { WikiJsApi } from '../api.js';
-import type { ConfirmationStore } from '../confirm.js';
+import type { Approver, ConfirmationStore } from 'mcp-approval';
 import type { PathScope } from '../paths.js';
 import type { PageReadLog } from '../read-log.js';
 
@@ -16,6 +16,8 @@ import type { PageReadLog } from '../read-log.js';
 export interface ToolContext {
   api: WikiJsApi;
   confirmations: ConfirmationStore;
+  /** Asks a person where the client can show a prompt; the store is the fallback. */
+  approval: Approver;
   scope: PathScope;
   /** Shared so `get_page` and `update_page` agree on when a page was read. */
   reads: PageReadLog;

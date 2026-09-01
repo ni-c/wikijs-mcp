@@ -15,7 +15,7 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded } from '../api.js';
-import { fingerprint } from '../confirm.js';
+import { fingerprint } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import * as pageGql from '../gql/pages.js';
 import { guarded } from '../guard.js';
@@ -54,7 +54,7 @@ const commentBodyParam = z
 
 export function registerCommentTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_comments',
@@ -176,10 +176,13 @@ export function registerCommentTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ comment_id, content, confirm_token }) =>
+    async ({ comment_id, content, confirm_token }, mcp) =>
       run(async () => {
         assertCommentScopable(scope, 'update_comment');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_comment',
@@ -223,10 +226,13 @@ export function registerCommentTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ comment_id, confirm_token }) =>
+    async ({ comment_id, confirm_token }, mcp) =>
       run(async () => {
         assertCommentScopable(scope, 'delete_comment');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_comment',

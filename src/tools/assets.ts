@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded, type WikiJsApi } from '../api.js';
-import { identifier } from '../confirm.js';
+import { identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -182,7 +182,7 @@ function contentTypeFor(filename: string): string {
 
 export function registerAssetTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_assets',
@@ -399,7 +399,7 @@ export function registerAssetTools(
       }),
       annotations: { idempotentHint: true },
     },
-    async ({ asset_id, filename, confirm_token }) =>
+    async ({ asset_id, filename, confirm_token }, mcp) =>
       run(async () => {
         if (scope.active) {
           await assertFolderWithinScope(
@@ -410,6 +410,9 @@ export function registerAssetTools(
           );
         }
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'rename_asset',
@@ -447,7 +450,7 @@ export function registerAssetTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ asset_id, confirm_token }) =>
+    async ({ asset_id, confirm_token }, mcp) =>
       run(async () => {
         if (scope.active) {
           await assertFolderWithinScope(
@@ -458,6 +461,9 @@ export function registerAssetTools(
           );
         }
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_asset',

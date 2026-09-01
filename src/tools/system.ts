@@ -22,7 +22,7 @@ import type { ToolContext } from './context.js';
  */
 export function registerSystemTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, approval, confirmations, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'get_site_info',
@@ -215,9 +215,12 @@ export function registerSystemTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ key_id, confirm_token }) =>
+    async ({ key_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'revoke_api_key',
@@ -260,9 +263,12 @@ export function registerSystemTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ enabled, confirm_token }) =>
+    async ({ enabled, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'set_api_state',

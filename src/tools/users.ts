@@ -8,7 +8,7 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded } from '../api.js';
-import { fingerprint } from '../confirm.js';
+import { fingerprint } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -26,7 +26,7 @@ import type { ToolContext } from './context.js';
  */
 export function registerUserTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, approval, confirmations, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_users',
@@ -160,18 +160,24 @@ export function registerUserTools(
       }),
       annotations: { idempotentHint: false },
     },
-    async ({
-      email,
-      name,
-      password,
-      provider_key,
-      groups,
-      must_change_password,
-      send_welcome_email,
-      confirm_token,
-    }) =>
+    async (
+      {
+        email,
+        name,
+        password,
+        provider_key,
+        groups,
+        must_change_password,
+        send_welcome_email,
+        confirm_token,
+      },
+      mcp
+    ) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'create_user',
@@ -248,17 +254,15 @@ export function registerUserTools(
       }),
       annotations: { idempotentHint: true },
     },
-    async ({
-      user_id,
-      email,
-      name,
-      groups,
-      location,
-      job_title,
-      confirm_token,
-    }) =>
+    async (
+      { user_id, email, name, groups, location, job_title, confirm_token },
+      mcp
+    ) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_user',
@@ -341,9 +345,12 @@ export function registerUserTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ user_id, replace_with_user_id, confirm_token }) =>
+    async ({ user_id, replace_with_user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_user',
@@ -391,9 +398,12 @@ export function registerUserTools(
       // single-use, so the second identical call needs a fresh one.
       annotations: { idempotentHint: false },
     },
-    async ({ user_id, active, confirm_token }) =>
+    async ({ user_id, active, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'set_user_active',
@@ -436,9 +446,12 @@ export function registerUserTools(
       }),
       annotations: { idempotentHint: false },
     },
-    async ({ user_id, confirm_token }) =>
+    async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'verify_user',
@@ -479,9 +492,12 @@ export function registerUserTools(
       }),
       annotations: { idempotentHint: false },
     },
-    async ({ user_id, enabled, confirm_token }) =>
+    async ({ user_id, enabled, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'set_user_tfa',
@@ -525,9 +541,12 @@ export function registerUserTools(
       }),
       annotations: { idempotentHint: false },
     },
-    async ({ user_id, confirm_token }) =>
+    async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'reset_user_password',

@@ -1,4 +1,8 @@
-import type { McpServer, CallToolResult } from '@modelcontextprotocol/server';
+import type {
+  McpServer,
+  CallToolResult,
+  InputRequiredResult,
+} from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
   budgetedList,
@@ -24,7 +28,7 @@ import {
 } from '../schema.js';
 
 import { assertSucceeded, WikiJsGraphQLError, type WikiJsApi } from '../api.js';
-import { identifier } from '../confirm.js';
+import { identifier } from '../resource-key.js';
 import { applyEdits } from '../edits.js';
 import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
@@ -140,7 +144,7 @@ function tagNames(value: unknown): string[] {
 
 export function registerPageTools(
   server: McpServer,
-  { api, confirmations, scope, reads, readOnly }: ToolContext
+  { api, approval, confirmations, scope, reads, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_pages',
@@ -277,7 +281,7 @@ export function registerPageTools(
       section,
       offset,
       max_chars,
-    }): Promise<CallToolResult> =>
+    }): Promise<CallToolResult | InputRequiredResult> =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
@@ -924,14 +928,17 @@ export function registerPageTools(
       }),
       annotations: { idempotentHint: false },
     },
-    async ({
-      page_id,
-      path,
-      locale,
-      destination_path,
-      destination_locale,
-      confirm_token,
-    }) =>
+    async (
+      {
+        page_id,
+        path,
+        locale,
+        destination_path,
+        destination_locale,
+        confirm_token,
+      },
+      mcp
+    ) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
@@ -944,6 +951,9 @@ export function registerPageTools(
         assertWithinScope(scope, destination_path, 'destination page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'move_page',
@@ -988,7 +998,7 @@ export function registerPageTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ page_id, path, locale, confirm_token }) =>
+    async ({ page_id, path, locale, confirm_token }, mcp) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
@@ -996,6 +1006,9 @@ export function registerPageTools(
         assertWithinScope(scope, pagePath, 'page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_page',
@@ -1035,13 +1048,16 @@ export function registerPageTools(
       }),
       annotations: { idempotentHint: true },
     },
-    async ({ page_id, path, locale, editor, confirm_token }) =>
+    async ({ page_id, path, locale, editor, confirm_token }, mcp) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
         assertWithinScope(scope, String(page.path), 'page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'convert_page_editor',

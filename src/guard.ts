@@ -1,11 +1,13 @@
-import type { CallToolResult } from '@modelcontextprotocol/server';
-import {
-  confirmationPrompt,
-  setResourceKey,
-  type ConfirmationStore,
-} from './confirm.js';
+import type {
+  CallToolResult,
+  InputRequiredResult,
+  McpServer,
+  ServerContext,
+} from '@modelcontextprotocol/server';
+import { setResourceKey } from 'mcp-approval';
+import type { Approver, ConfirmationStore } from 'mcp-approval';
 
-import { errorResult, textResult } from './result.js';
+import { errorResult } from './result.js';
 
 /**
  * Wraps an operation that must not happen on the first call.
@@ -24,6 +26,9 @@ import { errorResult, textResult } from './result.js';
  * this server's upstream content is written by whoever can edit a page.
  */
 export async function guarded(
+  server: McpServer,
+  ctx: ServerContext,
+  approval: Approver,
   confirmations: ConfirmationStore,
   options: {
     tool: string;
@@ -33,28 +38,25 @@ export async function guarded(
     confirmToken: string | undefined;
   },
   perform: () => Promise<CallToolResult>
-): Promise<CallToolResult> {
-  const resource = setResourceKey(options.tool, options.targets);
+): Promise<CallToolResult | InputRequiredResult> {
+  const outcome = await approval.requestApproval(server, ctx, confirmations, {
+    what: options.what,
+    consequence: options.consequence,
+    resourceKey: setResourceKey(options.tool, options.targets),
+    token: options.confirmToken,
+    toolName: options.tool,
+    title: `${options.what[0]?.toUpperCase()}${options.what.slice(1)}?`,
+    hint: 'Tick to go ahead, leave it to cancel.',
+  });
 
-  if (confirmations.consume(resource, options.confirmToken)) {
-    return perform();
+  if (outcome.decision === 'approved') return perform();
+  if (outcome.decision === 'declined') {
+    return errorResult(`The user declined. ${options.tool} did nothing.`);
   }
-
-  if (options.confirmToken !== undefined) {
-    return errorResult(
-      'The confirmation token is invalid, expired or was issued for different ' +
-        `arguments. Call ${options.tool} without a token to get a new one.`
-    );
-  }
-
-  const token = confirmations.issue(resource);
-  return textResult(
-    confirmationPrompt(
-      options.what,
-      options.consequence,
-      options.tool,
-      token,
-      confirmations.ttlMinutes
-    )
-  );
+  // A token that was sent and did not match is refused with the reason rather
+  // than answered with a fresh prompt: it means the call carried a confirmation
+  // issued for different arguments, which is what the key binds against. The
+  // sentence comes from the library, so the whole fleet refuses alike.
+  if (outcome.decision === 'rejected') return errorResult(outcome.reason);
+  return outcome.result;
 }

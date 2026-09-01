@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
-import { fingerprint, identifier } from '../confirm.js';
+import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -47,7 +47,7 @@ const pageRuleParam = z
 
 export function registerGroupTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, approval, confirmations, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_groups',
@@ -164,16 +164,22 @@ export function registerGroupTools(
       }),
       annotations: { idempotentHint: true },
     },
-    async ({
-      group_id,
-      name,
-      permissions,
-      page_rules,
-      redirect_on_login,
-      confirm_token,
-    }) =>
+    async (
+      {
+        group_id,
+        name,
+        permissions,
+        page_rules,
+        redirect_on_login,
+        confirm_token,
+      },
+      mcp
+    ) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_group',
@@ -229,9 +235,12 @@ export function registerGroupTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ group_id, confirm_token }) =>
+    async ({ group_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_group',
@@ -270,9 +279,12 @@ export function registerGroupTools(
       }),
       annotations: { idempotentHint: false },
     },
-    async ({ group_id, user_id, confirm_token }) =>
+    async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'assign_user_to_group',
@@ -313,9 +325,12 @@ export function registerGroupTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ group_id, user_id, confirm_token }) =>
+    async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'unassign_user_from_group',

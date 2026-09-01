@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
-import { fingerprint, identifier } from '../confirm.js';
+import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -26,7 +26,7 @@ function refuseWhenScoped(
 
 export function registerTagTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_tags',
@@ -106,12 +106,15 @@ export function registerTagTools(
       }),
       annotations: { idempotentHint: true },
     },
-    async ({ tag_id, tag, title, confirm_token }) =>
+    async ({ tag_id, tag, title, confirm_token }, mcp) =>
       run(async () => {
         // A tag rename touches every page carrying it, wherever those pages
         // live, so it cannot be confined to a prefix.
         refuseWhenScoped(scope, 'update_tag');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_tag',
@@ -153,10 +156,13 @@ export function registerTagTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ tag_id, confirm_token }) =>
+    async ({ tag_id, confirm_token }, mcp) =>
       run(async () => {
         refuseWhenScoped(scope, 'delete_tag');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_tag',

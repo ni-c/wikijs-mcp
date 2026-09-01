@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 
 import { assertSucceeded } from '../api.js';
-import { identifier } from '../confirm.js';
+import { identifier } from '../resource-key.js';
 import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
@@ -54,7 +54,7 @@ function refuseWhenScoped(scope: PathScope, tool: string): void {
 
 export function registerMaintenanceTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   if (readOnly) return;
 
@@ -93,9 +93,12 @@ export function registerMaintenanceTools(
       inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
       annotations: { idempotentHint: false },
     },
-    async ({ confirm_token }) =>
+    async ({ confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'flush_page_cache',
@@ -129,9 +132,12 @@ export function registerMaintenanceTools(
       inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
       annotations: { idempotentHint: false },
     },
-    async ({ confirm_token }) =>
+    async ({ confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'rebuild_page_tree',
@@ -168,9 +174,12 @@ export function registerMaintenanceTools(
       inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
       annotations: { idempotentHint: false },
     },
-    async ({ confirm_token }) =>
+    async ({ confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'rebuild_search_index',
@@ -209,10 +218,13 @@ export function registerMaintenanceTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ older_than, confirm_token }) =>
+    async ({ older_than, confirm_token }, mcp) =>
       run(async () => {
         refuseWhenScoped(scope, 'purge_page_history');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'purge_page_history',
@@ -254,7 +266,7 @@ export function registerMaintenanceTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ source_locale, target_locale, confirm_token }) =>
+    async ({ source_locale, target_locale, confirm_token }, mcp) =>
       run(async () => {
         refuseWhenScoped(scope, 'migrate_pages_locale');
         if (source_locale === target_locale) {
@@ -263,6 +275,9 @@ export function registerMaintenanceTools(
           );
         }
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             // Labelled, not just listed. setResourceKey sorts its targets so

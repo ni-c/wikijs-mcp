@@ -3,7 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 
 import { WikiJsApi } from './api.js';
 import type { Config } from './config.js';
-import { ConfirmationStore } from './confirm.js';
+import { ConfirmationStore, createApproval } from 'mcp-approval';
 import { buildPathScope } from './paths.js';
 import { PageReadLog } from './read-log.js';
 import { buildToolFilter, installToolFilter } from './tool-filter.js';
@@ -62,6 +62,12 @@ export function createServer(config: Config): McpServer {
   const context: ToolContext = {
     api: new WikiJsApi(config),
     confirmations: new ConfirmationStore(),
+
+    // One approver per server: it holds the key that seals the request state
+
+    // carried out through the client and back.
+
+    approval: createApproval({ server: 'wikijs-mcp' }),
     scope,
     reads: new PageReadLog(),
     readOnly: config.readOnly,

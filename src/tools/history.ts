@@ -77,7 +77,7 @@ async function versionContent(
 
 export function registerHistoryTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_page_history',
@@ -278,12 +278,15 @@ export function registerHistoryTools(
       }),
       annotations: { destructiveHint: true, idempotentHint: false },
     },
-    async ({ page_id, version_id, confirm_token }) =>
+    async ({ page_id, version_id, confirm_token }, mcp) =>
       run(async () => {
         const target = await resolveId(api, { page_id });
         assertWithinScope(scope, String(target.path), 'page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'restore_page_version',
