@@ -21,6 +21,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing that works today stops working — but where a person can be asked, one
   is, instead of a token that only proves the same call was made twice.
 
+- `ELICITATION` switches the dialog off — `false` sends a client that could have
+  been asked down the two-call-token path instead. For a scheduled job or a test
+  harness, where a dialog is the wrong shape rather than an unwanted one.
+
+  It does **not** remove the guard: there is no setting in which a guarded call
+  goes unannounced. Two deliberate rough edges come with it. The variable is
+  **not prefixed**, so one `export ELICITATION=false` reaches every MCP server in
+  the environment — which is why a server started with it off prints a line
+  saying so, and why the fallback text names the server instead of blaming a
+  client that was working fine. And a value that is neither `true` nor `false`
+  **stops the server**, where the `WIKIJS_*` booleans beside it fail _off_ on a
+  typo: this is the only variable here that defaults to _on_. It is read after
+  `WIKIJS_TOKEN` and `WIKIJS_API_KEY` are wiped from the environment, so that exit
+  cannot leave a credential behind.
+
+- A `docs/guide/approval.md` page, and a 👤 marker in the generated tool
+  reference that is read off the registered schema rather than from a list kept
+  beside it.
+
+### Removed
+
+- **`flush_page_cache`, `rebuild_page_tree` and `rebuild_search_index` no longer
+  ask for a confirmation**, and no longer declare `confirm_token` at all — a
+  caller that still sends one gets a schema error rather than silence.
+
+  They were gated because they are instance-wide and slow, and that is the wrong
+  argument: nothing is lost by any of them. The cost is time, not content, and a
+  dialog in front of an operation that loses nothing is how people learn to tick
+  without reading — which spends exactly the attention `purge_page_history`
+  needs. What each of them does cost is now stated in its description.
+
 ### Changed
 
 - Runs on **MCP SDK 2.0**. Existing clients see the same protocol revision they

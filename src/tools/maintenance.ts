@@ -90,35 +90,23 @@ export function registerMaintenanceTools(
       description:
         'Drops Wiki.js’ rendered-page cache for the whole wiki. Nothing is ' +
         'lost, but every page has to be rendered again on first access, so a ' +
-        'busy instance gets slower for a while. Requires a confirmation token.',
-      inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
+        'busy instance gets slower for a while.',
+      inputSchema: z.object({}),
+      // Not guarded, and the argument for guarding it was always the wrong
+      // one: it costs time, not content. A dialog in front of an operation
+      // that loses nothing is how people learn to tick without reading, which
+      // spends exactly the attention purge_page_history needs.
       annotations: WRITE_IDEMPOTENT,
     },
-    async ({ confirm_token }, mcp) =>
-      run(async () =>
-        guarded(
-          server,
-          mcp,
-          approval,
-          confirmations,
-          {
-            tool: 'flush_page_cache',
-            targets: ['instance'],
-            what: 'flush the rendered-page cache of the entire wiki',
-            consequence:
-              'No content is lost, but every page is rendered from scratch on next access.',
-            confirmToken: confirm_token,
-          },
-          async () => {
-            const data = await api.execute('flush_page_cache', gql.FLUSH_CACHE);
-            assertSucceeded(
-              objectOf(data.pages, 'the page mutation').flushCache,
-              'flush_page_cache'
-            );
-            return textResult('Flushed the page cache.');
-          }
-        )
-      )
+    async () =>
+      run(async () => {
+        const data = await api.execute('flush_page_cache', gql.FLUSH_CACHE);
+        assertSucceeded(
+          objectOf(data.pages, 'the page mutation').flushCache,
+          'flush_page_cache'
+        );
+        return textResult('Flushed the page cache.');
+      })
   );
 
   server.registerTool(
@@ -128,39 +116,24 @@ export function registerMaintenanceTools(
       description:
         'Recomputes the folder structure Wiki.js derives from page paths. The ' +
         'repair for a navigation tree that disagrees with the pages actually ' +
-        'present, usually after a bulk import or a database edit. Requires a ' +
-        'confirmation token.',
-      inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
+        'present, usually after a bulk import or a database edit. Page content ' +
+        'is untouched, but it walks every page and can take minutes.',
+      inputSchema: z.object({}),
+      // Not guarded, and the argument for guarding it was always the wrong
+      // one: it costs time, not content. A dialog in front of an operation
+      // that loses nothing is how people learn to tick without reading, which
+      // spends exactly the attention purge_page_history needs.
       annotations: WRITE_IDEMPOTENT,
     },
-    async ({ confirm_token }, mcp) =>
-      run(async () =>
-        guarded(
-          server,
-          mcp,
-          approval,
-          confirmations,
-          {
-            tool: 'rebuild_page_tree',
-            targets: ['instance'],
-            what: 'rebuild the page tree of the entire wiki',
-            consequence:
-              'Page content is untouched, but the operation walks every page and can take minutes.',
-            confirmToken: confirm_token,
-          },
-          async () => {
-            const data = await api.execute(
-              'rebuild_page_tree',
-              gql.REBUILD_TREE
-            );
-            assertSucceeded(
-              objectOf(data.pages, 'the page mutation').rebuildTree,
-              'rebuild_page_tree'
-            );
-            return textResult('Rebuilt the page tree.');
-          }
-        )
-      )
+    async () =>
+      run(async () => {
+        const data = await api.execute('rebuild_page_tree', gql.REBUILD_TREE);
+        assertSucceeded(
+          objectOf(data.pages, 'the page mutation').rebuildTree,
+          'rebuild_page_tree'
+        );
+        return textResult('Rebuilt the page tree.');
+      })
   );
 
   server.registerTool(
@@ -171,38 +144,27 @@ export function registerMaintenanceTools(
         'Reindexes every page in the active search engine. Required once after ' +
         'switching away from "Database - Basic", because the new engine starts ' +
         'empty and search silently returns nothing until this runs. On the ' +
-        'basic engine it does nothing. Requires a confirmation token.',
-      inputSchema: z.object({ confirm_token: confirmTokenParam.optional() }),
+        'basic engine it does nothing. Search results may be incomplete while ' +
+        'it runs, and it can take minutes on a large wiki.',
+      inputSchema: z.object({}),
+      // Not guarded, and the argument for guarding it was always the wrong
+      // one: it costs time, not content. A dialog in front of an operation
+      // that loses nothing is how people learn to tick without reading, which
+      // spends exactly the attention purge_page_history needs.
       annotations: WRITE_IDEMPOTENT,
     },
-    async ({ confirm_token }, mcp) =>
-      run(async () =>
-        guarded(
-          server,
-          mcp,
-          approval,
-          confirmations,
-          {
-            tool: 'rebuild_search_index',
-            targets: ['instance'],
-            what: 'rebuild the search index over every page in the wiki',
-            consequence:
-              'Search results may be incomplete while it runs, and it can take minutes on a large wiki.',
-            confirmToken: confirm_token,
-          },
-          async () => {
-            const data = await api.execute(
-              'rebuild_search_index',
-              adminGql.REBUILD_SEARCH_INDEX
-            );
-            assertSucceeded(
-              objectOf(data.search, 'the search mutation').rebuildIndex,
-              'rebuild_search_index'
-            );
-            return textResult('Rebuilt the search index.');
-          }
-        )
-      )
+    async () =>
+      run(async () => {
+        const data = await api.execute(
+          'rebuild_search_index',
+          adminGql.REBUILD_SEARCH_INDEX
+        );
+        assertSucceeded(
+          objectOf(data.search, 'the search mutation').rebuildIndex,
+          'rebuild_search_index'
+        );
+        return textResult('Rebuilt the search index.');
+      })
   );
 
   server.registerTool(

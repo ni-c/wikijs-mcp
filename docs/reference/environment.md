@@ -14,6 +14,7 @@
 | `WIKIJS_ALLOW_TOOLS` | no | — | Tool names, `list_*` prefixes or `essential`; only these register |
 | `WIKIJS_DENY_TOOLS` | no | — | Same syntax; subtracted from whatever the allow list left |
 | `WIKIJS_INSECURE_TLS` | no | `false` | `true` accepts self-signed certificates |
+| `ELICITATION` | no | `true` | `false` replaces the approval dialog with the two-call token. **Not prefixed** |
 
 ## `WIKIJS_LOCALE`
 
@@ -82,3 +83,23 @@ error naming the read-only setting rather than "unknown tool"; a pattern coverin
 write tools is accepted and merely contributes nothing, with a warning on stderr.
 Deny entries are exempt: denying an already-suppressed tool is how a defensive list is
 written.
+
+## `ELICITATION`
+
+Whether a client that *can* show a dialog is asked before a guarded tool acts.
+Default `true`. `false` takes the two-call-token path instead — it does not remove
+the guard, and a server started with it off prints one line saying so.
+
+Two ways it differs from every other variable here:
+
+- **No prefix.** One `export ELICITATION=false` reaches every MCP server in the same
+  environment, not just this one. That is the point of it and also its risk; see
+  [Asking a person](/guide/approval).
+- **Fatal on anything else.** Where the `WIKIJS_*` booleans fail *off* on a typo,
+  this one stops the server with exit code 1. It is the only variable here that
+  defaults to *on*, and a typo that fell back would leave the dialog running while
+  you believed it was off.
+
+Values are trimmed and matched case-insensitively. It is read *after* `WIKIJS_TOKEN`
+and `WIKIJS_API_KEY` are deleted from `process.env`, so the fatal path cannot leave
+a credential sitting there for a crash reporter.

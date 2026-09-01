@@ -98,7 +98,10 @@ export function createServer(config: Config): McpServer {
     confirmations: new ConfirmationStore(),
     // One approver per server: it holds the key that seals the request state
     // carried out through the client and back.
-    approval: createApproval({ server: 'wikijs-mcp' }),
+    approval: createApproval({
+      server: 'wikijs-mcp',
+      elicitation: config.elicitation,
+    }),
     scope,
     reads: new PageReadLog(),
     readOnly: config.readOnly,

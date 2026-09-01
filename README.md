@@ -60,6 +60,7 @@ seven than from sixty-two — see
 | `WIKIJS_ALLOWED_PATHS` | no       | Comma-separated page path prefixes the write tools are confined to, e.g. `docs,team/notes` |
 | `WIKIJS_ALLOW_TOOLS`   | no       | Comma-separated tool names, `list_*` prefixes, or `essential` for a curated preset         |
 | `WIKIJS_DENY_TOOLS`    | no       | Same syntax; removed from whatever `WIKIJS_ALLOW_TOOLS` left                               |
+| `ELICITATION`          | no       | `false` replaces the approval dialog with the two-call token. **Not prefixed**             |
 | `WIKIJS_INSECURE_TLS`  | no       | `true` accepts self-signed certificates (scoped to this connection)                        |
 
 **The locale is part of a page's identity**, not a display preference: the same path
@@ -172,8 +173,10 @@ docker run --rm -i \
 
 ## Tools
 
-62 tools. ★ marks the `essential` preset; ⚠ marks a tool that needs a
-confirmation token.
+62 tools. ★ marks the `essential` preset; ⚠ marks a tool that **asks a person**
+through MCP elicitation — a dialog the model cannot answer on its behalf, falling
+back to a two-call `confirm_token` where the client cannot show one. See
+[Asking a person](https://wikijs-mcp.ni-c.de/guide/approval).
 
 | Tool                       | Description                                                                                                                                                                         |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -260,11 +263,18 @@ overwrites on purpose.
 
 ## Safety
 
-- **Destructive and administrative tools are two-step.** The first call returns a
-  short-lived confirmation token bound to the exact target; only a second call
-  carrying that token performs the operation. A model cannot satisfy this gate on
-  its own. The binding includes everything that decides _what_ is touched — a token
-  for `migrate_pages_locale` from `de` to `en` will not run `en` to `de`.
+- **Destructive and administrative tools ask a person.** Where the client supports
+  MCP elicitation they raise a real dialog that the model cannot answer on its
+  behalf. Where it does not, the first call returns a short-lived token bound to the
+  exact target and only a second call carrying it performs the operation — which
+  proves the call was made twice with the same arguments and nothing more, and the
+  text says so. The binding includes everything that decides _what_ is touched — an
+  approval for `migrate_pages_locale` from `de` to `en` will not run `en` to `de`.
+  `ELICITATION=false` takes the fallback deliberately; it never removes the guard.
+- **Three maintenance tools are deliberately not gated.** `flush_page_cache`,
+  `rebuild_page_tree` and `rebuild_search_index` cost time, not content. A dialog in
+  front of an operation that loses nothing is how people learn to tick without
+  reading.
 - **Confirmation prompts never quote content from Wiki.js.** Page titles and
   descriptions are written by anyone with edit rights, and that text is read by a
   model. Only ids, paths and server-side values appear, and a path is checked to be

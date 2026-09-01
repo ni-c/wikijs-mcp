@@ -788,19 +788,51 @@ describe('system and maintenance tools', () => {
     await close();
   });
 
-  it('gates every instance-wide maintenance operation', async () => {
+  it('gates the one maintenance operation that loses something', async () => {
     stubFetch(routes);
     const { text, close } = await connect();
-    expect(await confirmed(text, 'flush_page_cache', {})).toContain('Flushed');
-    expect(await confirmed(text, 'rebuild_page_tree', {})).toContain(
-      'Rebuilt the page tree'
-    );
-    expect(await confirmed(text, 'rebuild_search_index', {})).toContain(
-      'Rebuilt the search index'
-    );
     expect(
       await confirmed(text, 'purge_page_history', { older_than: 'P1Y' })
     ).toContain('Purged page versions');
+    await close();
+  });
+
+  it('runs the three that only cost time without asking anyone', async () => {
+    // They used to be gated on the grounds that they are instance-wide and
+    // slow. Nothing is lost by any of them — the argument was about cost, not
+    // content — and a dialog in front of an operation that loses nothing is
+    // how people learn to tick without reading, which spends exactly the
+    // attention purge_page_history needs.
+    stubFetch(routes);
+    const { text, close } = await connect();
+    expect(await text('flush_page_cache', {})).toContain('Flushed');
+    expect(await text('rebuild_page_tree', {})).toContain(
+      'Rebuilt the page tree'
+    );
+    expect(await text('rebuild_search_index', {})).toContain(
+      'Rebuilt the search index'
+    );
+    await close();
+  });
+
+  it('takes no confirm_token on the three, so a stale caller is told', async () => {
+    // Not merely unguarded: the parameter is gone from the schema, so a caller
+    // that still sends one gets a schema error rather than silence.
+    stubFetch(routes);
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    for (const name of [
+      'flush_page_cache',
+      'rebuild_page_tree',
+      'rebuild_search_index',
+    ]) {
+      const tool = tools.find((entry) => entry.name === name);
+      expect(tool, name).toBeDefined();
+      const properties = (
+        tool!.inputSchema as { properties?: Record<string, unknown> }
+      ).properties;
+      expect(properties && 'confirm_token' in properties, name).toBe(false);
+    }
     await close();
   });
 

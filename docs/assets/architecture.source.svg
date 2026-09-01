@@ -19,7 +19,7 @@
   Below is the three-box shape most of these servers have. Keep the accented box for
   the server itself; that is the one thing the reader should land on first. Replace
   the labels, add rows inside the server box for what makes this one different
-  (tool counts, the confirmation-token gate, a read-only switch), and adjust the
+  (tool counts, the approval gate, a read-only switch), and adjust the
   viewBox height to match. Anything referenced by url(#id) needs an id unique enough
   not to collide when the SVG is inlined into a page — prefix them, as below.
 -->
@@ -42,7 +42,7 @@
 
   <rect class="node-accent" x="280" y="60" width="170" height="100" rx="10" />
   <text class="label-title" x="365" y="95" text-anchor="middle">wikijs-mcp</text>
-  <text class="label-muted" x="365" y="115" text-anchor="middle">62 tools · confirm tokens</text>
+  <text class="label-muted" x="365" y="115" text-anchor="middle">62 tools · asks a person</text>
   <text class="label-muted" x="365" y="133" text-anchor="middle">read-only · path scope</text>
 
   <rect class="node" x="550" y="70" width="150" height="80" rx="10" />

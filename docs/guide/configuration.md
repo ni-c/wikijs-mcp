@@ -123,6 +123,18 @@ call to refuse because there is no tool to call.
      Put it directly after the read-only section — they are the same knob family,
      and that adjacency does half the explaining. -->
 
+## Turning the approval dialog off
+
+The destructive and administrative tools ask a person through MCP elicitation
+before they act. `ELICITATION=false` takes them to the two-call token instead. It
+does not remove the guard; there is no setting in which a guarded call goes
+unannounced.
+
+The variable deliberately carries no `WIKIJS_` prefix, which means it reaches every
+MCP server in the same environment, and — unlike the booleans here — a value it does
+not recognise **stops the server** rather than failing off. See
+[Asking a person](/guide/approval).
+
 ## Choosing the tools that load
 
 Read-only mode is one cut, along a line this server drew for you.

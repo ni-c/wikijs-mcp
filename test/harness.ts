@@ -16,6 +16,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     locale: 'en',
     insecureTls: false,
     readOnly: false,
+    elicitation: true,
     allowedPaths: undefined,
     allowTools: undefined,
     denyTools: undefined,

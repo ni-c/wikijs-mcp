@@ -22,6 +22,15 @@ async function main(): Promise<void> {
       'wikijs-mcp: WIKIJS_READ_ONLY is set — only read tools are registered.'
     );
   }
+  // Printed only when it is off, like the line above. ELICITATION is
+  // unprefixed, so one `export ELICITATION=false` reaches every MCP server in
+  // the environment — this line is what makes that visible in the log of each
+  // one it actually reached.
+  if (!config.elicitation) {
+    console.error(
+      'wikijs-mcp: ELICITATION=false — guarded tools fall back to the two-call token.'
+    );
+  }
   if (config.allowedPaths !== undefined && config.allowedPaths.trim() !== '') {
     console.error(
       `wikijs-mcp: writes are confined to WIKIJS_ALLOWED_PATHS (${config.allowedPaths}).`

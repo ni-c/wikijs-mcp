@@ -31,6 +31,7 @@ async function listTools() {
     locale: 'en',
     insecureTls: false,
     readOnly: false,
+    elicitation: true,
     allowedPaths: undefined,
     allowTools: undefined,
     denyTools: undefined,
@@ -95,9 +96,18 @@ function renderTool(tool) {
       : 'write';
   // Generated from the same constant the filter reads, so "which tools does
   // `essential` select" cannot be written down twice and drift.
+  // Read off the schema rather than from a list kept next to it: a tool is
+  // guarded exactly when it accepts the fallback token, and that is a fact
+  // about this server's own registration.
+  const asks = Object.hasOwn(
+    tool.inputSchema?.properties ?? {},
+    'confirm_token'
+  )
+    ? ' 👤'
+    : '';
   const preset = ESSENTIAL_TOOLS.includes(tool.name) ? ', **essential**' : '';
 
-  const lines = [`### \`${tool.name}\``, ''];
+  const lines = [`### \`${tool.name}\`${asks}`, ''];
   if (tool.title) lines.push(`**${tool.title}** — ${kind}${preset}`, '');
   lines.push(escapeCell(tool.description), '');
 
@@ -147,9 +157,19 @@ function render(tools) {
     '',
     'Every tool that addresses a page takes either `page_id` or `path` plus',
     "`locale` — the locale is part of a page's identity and defaults to",
-    '`WIKIJS_LOCALE`. A tool with a `confirm_token` parameter is two-step: the',
-    'first call returns a short-lived token bound to the exact target, and only',
-    'a second call carrying that token performs the operation.',
+    '`WIKIJS_LOCALE`.',
+    '',
+    '👤 marks a tool that **asks a person** before it acts, through MCP',
+    'elicitation — a dialog the model cannot answer on its behalf. Where the',
+    'client cannot show one it falls back to a two-call `confirm_token` bound to',
+    'the exact target, and says which of the two it was. `ELICITATION=false`',
+    'takes that fallback deliberately; it never removes the guard. See',
+    '[Asking a person](/guide/approval).',
+    '',
+    'Every tool declares all four MCP annotations — `readOnlyHint`,',
+    '`destructiveHint`, `idempotentHint`, `openWorldHint`. `update_page` is',
+    'deliberately **not** destructive: Wiki.js keeps page history, which is what',
+    'separates it from the same verb in servers that do not.',
     '',
     '## Read tools',
     '',

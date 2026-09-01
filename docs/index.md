@@ -30,7 +30,7 @@ features:
   - title: Only the tools you want
     details: 'WIKIJS_READ_ONLY=true registers the read tools and nothing else. WIKIJS_ALLOW_TOOLS cuts finer — essential for a curated handful, your own comma-separated list, or a whole family with list_* — and WIKIJS_DENY_TOOLS subtracts. Whatever is filtered out does not exist on the protocol rather than failing when called, and a name that matches no tool stops the server at startup instead of quietly going missing.'
   - title: Safe by default
-    details: Destructive tools need a server-issued confirmation token, upstream content is marked untrusted, and read-only mode simply does not register the write tools.
+    details: 'Destructive and administrative tools ask a person first, through MCP elicitation — a dialog the model cannot answer on its behalf, falling back to a server-issued token bound to the exact target where the client cannot show one. Upstream content is marked untrusted, and read-only mode simply does not register the write tools.'
 ---
 
 <figure class="diagram">
@@ -54,7 +54,7 @@ features:
 
   <rect class="node-accent" x="280" y="60" width="170" height="100" rx="10" />
   <text class="label-title" x="365" y="95" text-anchor="middle">wikijs-mcp</text>
-  <text class="label-muted" x="365" y="115" text-anchor="middle">62 tools · confirm tokens</text>
+  <text class="label-muted" x="365" y="115" text-anchor="middle">62 tools · asks a person</text>
   <text class="label-muted" x="365" y="133" text-anchor="middle">read-only · path scope</text>
 
   <rect class="node" x="550" y="70" width="150" height="80" rx="10" />
