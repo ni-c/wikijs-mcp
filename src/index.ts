@@ -4,7 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { loadConfig, missingConfigKeys } from './config.js';
 import { PathScopeError } from './paths.js';
 import { createServer } from './server.js';
-import { ToolFilterError } from './tool-filter.js';
+import { ToolFilterError } from 'mcp-tool-allowlist';
 
 async function main(): Promise<void> {
   const config = loadConfig();
