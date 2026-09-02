@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { marked, plain } from '../output-schema.js';
 
 import { assertSucceeded, type WikiJsApi } from '../api.js';
 import {
@@ -13,7 +14,7 @@ import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
 import { assertWithinScope, type PathScope } from '../paths.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -211,6 +212,7 @@ export function registerAssetTools(
           .describe('Restrict to images or to non-image files.'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ folder_id, kind }) =>
       run(async () => {
@@ -244,6 +246,7 @@ export function registerAssetTools(
           .describe('Parent folder id. 0 (default) is the root.'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ parent_folder_id }) =>
       run(async () => {
@@ -290,6 +293,7 @@ export function registerAssetTools(
           .describe('Target folder id. 0 (default) is the root.'),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ filename, content_base64, folder_id }) =>
       run(async () => {
@@ -365,6 +369,7 @@ export function registerAssetTools(
           .describe('Display name (defaults to the slug).'),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ parent_folder_id, slug, name }) =>
       run(async () => {
@@ -387,7 +392,9 @@ export function registerAssetTools(
           objectOf(data.assets, 'the asset mutation').createFolder,
           'create_asset_folder'
         );
-        return textResult(`Created asset folder "${slug}".`);
+        return sentenceResult(`Created asset folder "${slug}".`, {
+          created_folder: slug,
+        });
       })
   );
 
@@ -404,6 +411,7 @@ export function registerAssetTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ asset_id, filename, confirm_token }, mcp) =>
       run(async () => {
@@ -437,7 +445,13 @@ export function registerAssetTools(
               objectOf(data.assets, 'the asset mutation').renameAsset,
               'rename_asset'
             );
-            return textResult(`Renamed asset ${asset_id} to "${filename}".`);
+            return sentenceResult(
+              `Renamed asset ${asset_id} to "${filename}".`,
+              {
+                asset_id,
+                filename,
+              }
+            );
           }
         );
       })
@@ -455,6 +469,7 @@ export function registerAssetTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ asset_id, confirm_token }, mcp) =>
       run(async () => {
@@ -487,7 +502,9 @@ export function registerAssetTools(
               objectOf(data.assets, 'the asset mutation').deleteAsset,
               'delete_asset'
             );
-            return textResult(`Deleted asset ${asset_id}.`);
+            return sentenceResult(`Deleted asset ${asset_id}.`, {
+              deleted_asset_id: asset_id,
+            });
           }
         );
       })

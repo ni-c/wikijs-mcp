@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 import {
   confirmTokenParam,
   emailParam,
@@ -18,7 +19,7 @@ import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -55,6 +56,7 @@ export function registerUserTools(
         limit: limitParam.optional(),
       }),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ filter, order_by, limit }) =>
       run(async () => {
@@ -89,6 +91,7 @@ export function registerUserTools(
           .describe('Name or email fragment.'),
       }),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ query }) =>
       run(async () => {
@@ -113,6 +116,7 @@ export function registerUserTools(
         'is returned — Wiki.js does not expose one.',
       inputSchema: z.object({ user_id: idParam }),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ user_id }) =>
       run(async () => {
@@ -165,6 +169,7 @@ export function registerUserTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async (
       {
@@ -278,6 +283,7 @@ export function registerUserTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async (
       { user_id, email, name, groups, location, job_title, confirm_token },
@@ -347,7 +353,10 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').update,
               'update_user'
             );
-            return textResult(`Updated user ${user_id}.`);
+            return sentenceResult(`Updated user ${user_id}.`, {
+              user_id,
+              updated: true,
+            });
           }
         )
       )
@@ -369,6 +378,7 @@ export function registerUserTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ user_id, replace_with_user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -400,7 +410,9 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').delete,
               'delete_user'
             );
-            return textResult(`Deleted user ${user_id}.`);
+            return sentenceResult(`Deleted user ${user_id}.`, {
+              deleted_user_id: user_id,
+            });
           }
         )
       )
@@ -422,6 +434,7 @@ export function registerUserTools(
       // Not idempotent although the end state is: the confirmation token is
       // single-use, so the second identical call needs a fresh one.
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ user_id, active, confirm_token }, mcp) =>
       run(async () =>
@@ -450,8 +463,9 @@ export function registerUserTools(
               active ? mutation.activate : mutation.deactivate,
               'set_user_active'
             );
-            return textResult(
-              `User ${user_id} is now ${active ? 'active' : 'deactivated'}.`
+            return sentenceResult(
+              `User ${user_id} is now ${active ? 'active' : 'deactivated'}.`,
+              { user_id, active }
             );
           }
         )
@@ -470,6 +484,7 @@ export function registerUserTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -494,7 +509,10 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').verify,
               'verify_user'
             );
-            return textResult(`User ${user_id} is verified.`);
+            return sentenceResult(`User ${user_id} is verified.`, {
+              user_id,
+              verified: true,
+            });
           }
         )
       )
@@ -516,6 +534,7 @@ export function registerUserTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ user_id, enabled, confirm_token }, mcp) =>
       run(async () =>
@@ -544,8 +563,9 @@ export function registerUserTools(
               enabled ? mutation.enableTFA : mutation.disableTFA,
               'set_user_tfa'
             );
-            return textResult(
-              `Two-factor authentication is now ${enabled ? 'required' : 'off'} for user ${user_id}.`
+            return sentenceResult(
+              `Two-factor authentication is now ${enabled ? 'required' : 'off'} for user ${user_id}.`,
+              { user_id, tfa_required: enabled }
             );
           }
         )
@@ -565,6 +585,7 @@ export function registerUserTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -591,7 +612,13 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').resetPassword,
               'reset_user_password'
             );
-            return textResult(`Password reset started for user ${user_id}.`);
+            return sentenceResult(
+              `Password reset started for user ${user_id}.`,
+              {
+                user_id,
+                reset_started: true,
+              }
+            );
           }
         )
       )

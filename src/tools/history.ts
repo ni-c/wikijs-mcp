@@ -1,10 +1,11 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { marked, plain } from '../output-schema.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
   run,
-  textResult,
+  sentenceResult,
 } from '../result.js';
 import {
   confirmTokenParam,
@@ -108,6 +109,7 @@ export function registerHistoryTools(
           .describe('Entries per page (default 50).'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id, path, locale, page, page_size }) =>
       run(async () => {
@@ -148,6 +150,7 @@ export function registerHistoryTools(
         version_id: idParam.describe('Version id from list_page_history.'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id, version_id }) =>
       run(async () => {
@@ -183,6 +186,7 @@ export function registerHistoryTools(
           .describe('Unchanged lines shown around each change (default 3).'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id, from_version, to_version, context_lines }) =>
       run(async () => {
@@ -246,6 +250,7 @@ export function registerHistoryTools(
         'it and when, so the change can be redone on top instead of discarded.',
       inputSchema: z.object({ page_id: idParam }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id }) =>
       run(async () => {
@@ -278,6 +283,7 @@ export function registerHistoryTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ page_id, version_id, confirm_token }, mcp) =>
       run(async () => {
@@ -305,8 +311,9 @@ export function registerHistoryTools(
             );
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.restore, 'restore_page_version');
-            return textResult(
-              `Restored page ${page_id} to version ${version_id}.`
+            return sentenceResult(
+              `Restored page ${page_id} to version ${version_id}.`,
+              { page_id, version_id, restored: true }
             );
           }
         );

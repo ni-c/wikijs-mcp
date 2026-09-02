@@ -4,12 +4,13 @@ import type {
   InputRequiredResult,
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { marked, plain } from '../output-schema.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
   jsonResult,
   run,
-  textResult,
+  sentenceResult,
 } from '../result.js';
 import {
   confirmTokenParam,
@@ -183,6 +184,7 @@ export function registerPageTools(
         direction: z.enum(['ASC', 'DESC']).optional(),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({
       limit,
@@ -278,6 +280,7 @@ export function registerPageTools(
           ),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({
       page_id,
@@ -378,6 +381,7 @@ export function registerPageTools(
         limit: limitParam.optional(),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ query, path, locale, limit }) =>
       run(async () => {
@@ -476,6 +480,7 @@ export function registerPageTools(
           .describe('Lines of context around each match (default 1).'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({
       pattern,
@@ -642,6 +647,7 @@ export function registerPageTools(
           .describe('Also return the path from the root down to this level.'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ path, locale, mode, include_ancestors }) =>
       run(async () => {
@@ -673,6 +679,7 @@ export function registerPageTools(
         'once and offers no filter, so on a large wiki this is truncated.',
       inputSchema: z.object({ locale: localeParam.optional() }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ locale }) =>
       run(async () => {
@@ -716,6 +723,7 @@ export function registerPageTools(
         is_private: z.boolean().optional(),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({
       path,
@@ -809,6 +817,7 @@ export function registerPageTools(
           ),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({
       page_id,
@@ -857,14 +866,32 @@ export function registerPageTools(
             // Drop the stale read, so a second attempt without re-reading does
             // not compare against the same superseded timestamp again.
             reads.forget(id);
-            return textResult(
+            // Deliberately NOT an error result, and the integration suite
+            // says so in as many words: an `isError` would make a client
+            // surface this as a failure, when what it is is an instruction for
+            // recovering. The declared output schema is what it is because of
+            // this branch — `written: false` and the two timestamps are the
+            // fields a caller acts on, and the sentence below is the same
+            // thing said to a reader.
+            return sentenceResult(
               `Refusing to write: page ${id} changed after you read it ` +
                 `(you saw ${checkoutDate}, it is now ${String(page.updatedAt)}). ` +
                 'Somebody else saved it in the meantime and this write would ' +
                 'silently discard their edit. Call get_page_conflict to see the ' +
                 'newer version, re-read the page with get_page and redo the ' +
                 'change on top of it — or call update_page again with ' +
-                'force=true to overwrite their edit on purpose.'
+                'force=true to overwrite their edit on purpose.',
+              {
+                page_id: id,
+                written: false,
+                conflict: {
+                  you_saw: checkoutDate,
+                  it_is_now: String(page.updatedAt),
+                },
+                note:
+                  'Call get_page_conflict, re-read with get_page and redo the ' +
+                  'change — or call update_page again with force=true.',
+              }
             );
           }
         }
@@ -947,6 +974,7 @@ export function registerPageTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async (
       {
@@ -995,8 +1023,9 @@ export function registerPageTools(
             });
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.move, 'move_page');
-            return textResult(
-              `Moved page ${id} to ${destination_path} (${toLocale}).`
+            return sentenceResult(
+              `Moved page ${id} to ${destination_path} (${toLocale}).`,
+              { page_id: id, path: destination_path, locale: toLocale }
             );
           }
         );
@@ -1017,6 +1046,7 @@ export function registerPageTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ page_id, path, locale, confirm_token }, mcp) =>
       run(async () => {
@@ -1044,7 +1074,10 @@ export function registerPageTools(
             });
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.delete, 'delete_page');
-            return textResult(`Deleted page ${id} (${pagePath}).`);
+            return sentenceResult(`Deleted page ${id} (${pagePath}).`, {
+              deleted_page_id: id,
+              path: pagePath,
+            });
           }
         );
       })
@@ -1067,6 +1100,7 @@ export function registerPageTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ page_id, path, locale, editor, confirm_token }, mcp) =>
       run(async () => {
@@ -1095,7 +1129,10 @@ export function registerPageTools(
             );
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.convert, 'convert_page_editor');
-            return textResult(`Converted page ${id} to ${editor}.`);
+            return sentenceResult(`Converted page ${id} to ${editor}.`, {
+              page_id: id,
+              editor,
+            });
           }
         );
       })

@@ -9,6 +9,12 @@
 All 62 tools: 27 read, 35 write.
 With `WIKIJS_READ_ONLY=true` the write tools are not registered at all.
 
+Every tool declares an `outputSchema` and answers with `structuredContent` beside
+the text block, so a client can use a result without parsing prose. The tools
+that report wiki content carry `untrusted: true` and `source: "wikijs"` as fields
+of that object — page text, titles, descriptions and comments are written by
+anyone with edit rights.
+
 All 62 are registered unless you say otherwise. `WIKIJS_ALLOW_TOOLS`
 and `WIKIJS_DENY_TOOLS` narrow the list to the ones you want, and
 `WIKIJS_ALLOW_TOOLS=essential` selects the 7 marked **essential**

@@ -180,6 +180,22 @@ through MCP elicitation — a dialog the model cannot answer on its behalf, fall
 back to a two-call `confirm_token` where the client cannot show one. See
 [Asking a person](https://wikijs-mcp.ni-c.de/guide/approval).
 
+Every tool declares an `outputSchema` and answers with `structuredContent`
+alongside the text block, so a client can use the result without parsing prose.
+Twenty-nine tools that answered with a sentence — _"Deleted page 5 (path)."_ —
+now answer with the fields as well, and the sentence stays where a reader wants
+it.
+
+The tools that report wiki content carry `untrusted: true` and
+`source: "wikijs"` as fields; page text, titles, descriptions and comments are
+written by anyone with edit rights. The list follows the call sites: a tool is
+marked exactly when it already routed its answer through the untrusted wrapper.
+
+`update_page`'s stale-read refusal keeps its shape as a deliberate exception —
+it stays an ordinary result rather than an error, because it is an instruction
+for recovering rather than a failure, and it now says `written: false` with both
+timestamps in fields.
+
 | Tool                       | Description                                                                                                                                                                         |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `list_pages`               | ★ Lists pages with their metadata, newest first by default.                                                                                                                         |

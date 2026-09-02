@@ -1,12 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
 import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -37,6 +38,7 @@ export function registerSystemTools(
         'database host are deliberately not requested.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -69,6 +71,7 @@ export function registerSystemTools(
           ),
       }),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ installed_only }) =>
       run(async () => {
@@ -105,6 +108,7 @@ export function registerSystemTools(
         'pages that actually exist.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -131,6 +135,7 @@ export function registerSystemTools(
         'real engine is configured and the index rebuilt.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -163,6 +168,7 @@ export function registerSystemTools(
         'nothing here can be used to authenticate.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -185,6 +191,7 @@ export function registerSystemTools(
         'their configuration are redacted.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -215,6 +222,7 @@ export function registerSystemTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ key_id, confirm_token }, mcp) =>
       run(async () =>
@@ -242,7 +250,9 @@ export function registerSystemTools(
                 .revokeApiKey,
               'revoke_api_key'
             );
-            return textResult(`Revoked API key ${key_id}.`);
+            return sentenceResult(`Revoked API key ${key_id}.`, {
+              revoked_key_id: key_id,
+            });
           }
         )
       )
@@ -263,6 +273,7 @@ export function registerSystemTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ enabled, confirm_token }, mcp) =>
       run(async () =>
@@ -289,8 +300,9 @@ export function registerSystemTools(
                 .setApiState,
               'set_api_state'
             );
-            return textResult(
-              `The Wiki.js API is now ${enabled ? 'enabled' : 'disabled'}.`
+            return sentenceResult(
+              `The Wiki.js API is now ${enabled ? 'enabled' : 'disabled'}.`,
+              { api_enabled: enabled }
             );
           }
         )

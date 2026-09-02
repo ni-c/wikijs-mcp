@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
 import { DESTRUCTIVE, WRITE_IDEMPOTENT } from './annotations.js';
@@ -9,7 +10,7 @@ import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { objectOf } from '../normalize.js';
 import { assertWithinScope, PathScopeError, type PathScope } from '../paths.js';
-import { jsonResult, run, textResult } from '../result.js';
+import { jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -89,6 +90,7 @@ export function registerMaintenanceTools(
         'than before.',
       inputSchema: z.object({ page_id: idParam }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ page_id }) =>
       run(async () => {
@@ -120,7 +122,10 @@ export function registerMaintenanceTools(
           objectOf(data.pages, 'the page mutation').render,
           'render_page'
         );
-        return textResult(`Re-rendered page ${page_id}.`);
+        return sentenceResult(`Re-rendered page ${page_id}.`, {
+          page_id,
+          rendered: true,
+        });
       })
   );
 
@@ -138,6 +143,7 @@ export function registerMaintenanceTools(
       // that loses nothing is how people learn to tick without reading, which
       // spends exactly the attention purge_page_history needs.
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -147,7 +153,7 @@ export function registerMaintenanceTools(
           objectOf(data.pages, 'the page mutation').flushCache,
           'flush_page_cache'
         );
-        return textResult('Flushed the page cache.');
+        return sentenceResult('Flushed the page cache.', { flushed: true });
       })
   );
 
@@ -166,6 +172,7 @@ export function registerMaintenanceTools(
       // that loses nothing is how people learn to tick without reading, which
       // spends exactly the attention purge_page_history needs.
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -175,7 +182,9 @@ export function registerMaintenanceTools(
           objectOf(data.pages, 'the page mutation').rebuildTree,
           'rebuild_page_tree'
         );
-        return textResult('Rebuilt the page tree.');
+        return sentenceResult('Rebuilt the page tree.', {
+          rebuilt: 'page-tree',
+        });
       })
   );
 
@@ -195,6 +204,7 @@ export function registerMaintenanceTools(
       // that loses nothing is how people learn to tick without reading, which
       // spends exactly the attention purge_page_history needs.
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -207,7 +217,9 @@ export function registerMaintenanceTools(
           objectOf(data.search, 'the search mutation').rebuildIndex,
           'rebuild_search_index'
         );
-        return textResult('Rebuilt the search index.');
+        return sentenceResult('Rebuilt the search index.', {
+          rebuilt: 'search-index',
+        });
       })
   );
 
@@ -224,6 +236,7 @@ export function registerMaintenanceTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ older_than, confirm_token }, mcp) =>
       run(async () => {
@@ -251,7 +264,12 @@ export function registerMaintenanceTools(
               objectOf(data.pages, 'the page mutation').purgeHistory,
               'purge_page_history'
             );
-            return textResult(`Purged page versions older than ${older_than}.`);
+            return sentenceResult(
+              `Purged page versions older than ${older_than}.`,
+              {
+                purged_older_than: older_than,
+              }
+            );
           }
         );
       })
@@ -272,6 +290,7 @@ export function registerMaintenanceTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ source_locale, target_locale, confirm_token }, mcp) =>
       run(async () => {

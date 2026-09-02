@@ -1,4 +1,5 @@
 import {
+  expectEveryToolDeclaresOutputSchema,
   expectEveryToolExercised,
   startServer,
   toolCoverage,
@@ -530,7 +531,14 @@ describe('the fallback path for a client with no dialog', () => {
       })
     ).created.id;
 
-    const refusal = await plain.call('delete_page', { page_id: created });
+    // The confirmation prompt is an error result: the page was not deleted,
+    // which is what `isError` says. (The *conflict* refusal above is not — it
+    // is an instruction for recovering, and the suite pins that.)
+    const refusal = await plain.call(
+      'delete_page',
+      { page_id: created },
+      { expectError: /confirm_token=/ }
+    );
     expect(refusal).toContain('confirm_token');
     expect(plain.prompts).toHaveLength(0);
 
@@ -550,6 +558,15 @@ describe('the fallback path for a client with no dialog', () => {
     expect(asking.prompts.length).toBeGreaterThan(20);
     expect(asking.prompts.join('\n')).toContain('cannot be undone');
   });
+});
+
+it('declares an output schema on every tool', async () => {
+  // The unit suite checks the same thing against a stub. Here it is checked
+  // against the server that has just answered every one of these tools against
+  // a real Wiki.js — and each of those answers went through the SDK's
+  // validation against the schema below it.
+  const { tools } = await asking.client.listTools();
+  expectEveryToolDeclaresOutputSchema(tools);
 });
 
 it('exercises every tool in the catalogue', () => {

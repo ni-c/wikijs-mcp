@@ -14,6 +14,7 @@ import {
   budgetedUntrustedResult,
   errorResult,
   jsonResult,
+  ResultTooLargeError,
   MAX_RESULT_BYTES,
   operationHint,
   run,
@@ -161,13 +162,13 @@ describe('budgetedJson', () => {
   });
 
   it('gives up in a readable way on something with nothing left to cut', () => {
-    const parsed = JSON.parse(
-      budgetedJson('z'.repeat(MAX_RESULT_BYTES + 10))
-    ) as {
-      error?: string;
-    };
     // A bare oversized string has neither a shortenable field nor an array.
-    expect(parsed.error ?? '').toContain('result size budget');
+    // The give-up used to be an envelope carrying an `error` field, which is a
+    // different shape from what a tool declares it returns — and the SDK
+    // refuses that. So it throws, and `run` turns it into an error result.
+    expect(() => budgetedJson('z'.repeat(MAX_RESULT_BYTES + 10))).toThrow(
+      ResultTooLargeError
+    );
   });
 
   it('redacts before it budgets, so a secret cannot survive truncation', () => {

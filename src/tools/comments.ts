@@ -1,11 +1,12 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { marked, plain } from '../output-schema.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
   jsonResult,
   run,
-  textResult,
+  sentenceResult,
 } from '../result.js';
 import {
   confirmTokenParam,
@@ -71,6 +72,7 @@ export function registerCommentTools(
         locale: localeParam.optional(),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ path, locale }) =>
       run(async () => {
@@ -97,6 +99,7 @@ export function registerCommentTools(
         'Returns a single comment by id, with its source and its rendered HTML.',
       inputSchema: z.object({ comment_id: idParam }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ comment_id }) =>
       run(async () => {
@@ -128,6 +131,7 @@ export function registerCommentTools(
         reply_to: idParam.optional().describe('Comment id this replies to.'),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ page_id, content, reply_to }) =>
       run(async () => {
@@ -176,6 +180,7 @@ export function registerCommentTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ comment_id, content, confirm_token }, mcp) =>
       run(async () => {
@@ -208,7 +213,10 @@ export function registerCommentTools(
               objectOf(data.comments, 'the comment mutation').update,
               'update_comment'
             );
-            return textResult(`Updated comment ${comment_id}.`);
+            return sentenceResult(`Updated comment ${comment_id}.`, {
+              comment_id,
+              updated: true,
+            });
           }
         );
       })
@@ -226,6 +234,7 @@ export function registerCommentTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ comment_id, confirm_token }, mcp) =>
       run(async () => {
@@ -253,7 +262,9 @@ export function registerCommentTools(
               objectOf(data.comments, 'the comment mutation').delete,
               'delete_comment'
             );
-            return textResult(`Deleted comment ${comment_id}.`);
+            return sentenceResult(`Deleted comment ${comment_id}.`, {
+              deleted_comment_id: comment_id,
+            });
           }
         );
       })

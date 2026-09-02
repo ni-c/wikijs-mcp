@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
 import {
@@ -12,7 +13,7 @@ import { fingerprint, identifier, label } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -68,6 +69,7 @@ export function registerGroupTools(
         order_by: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional(),
       }),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ filter, order_by }) =>
       run(async () => {
@@ -96,6 +98,7 @@ export function registerGroupTools(
         'because that mutation replaces the whole rule set.',
       inputSchema: z.object({ group_id: idParam }),
       annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ group_id }) =>
       run(async () => {
@@ -123,6 +126,7 @@ export function registerGroupTools(
         name: z.string().trim().min(1).max(255).describe('Group name.'),
       }),
       annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ name }) =>
       run(async () => {
@@ -170,6 +174,7 @@ export function registerGroupTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async (
       {
@@ -236,7 +241,10 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').update,
               'update_group'
             );
-            return textResult(`Updated group ${group_id}.`);
+            return sentenceResult(`Updated group ${group_id}.`, {
+              group_id,
+              updated: true,
+            });
           }
         )
       )
@@ -254,6 +262,7 @@ export function registerGroupTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ group_id, confirm_token }, mcp) =>
       run(async () =>
@@ -278,7 +287,9 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').delete,
               'delete_group'
             );
-            return textResult(`Deleted group ${group_id}.`);
+            return sentenceResult(`Deleted group ${group_id}.`, {
+              deleted_group_id: group_id,
+            });
           }
         )
       )
@@ -298,6 +309,7 @@ export function registerGroupTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -324,7 +336,14 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').assignUser,
               'assign_user_to_group'
             );
-            return textResult(`Added user ${user_id} to group ${group_id}.`);
+            return sentenceResult(
+              `Added user ${user_id} to group ${group_id}.`,
+              {
+                user_id,
+                group_id,
+                assigned: true,
+              }
+            );
           }
         )
       )
@@ -344,6 +363,7 @@ export function registerGroupTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
@@ -370,8 +390,9 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').unassignUser,
               'unassign_user_from_group'
             );
-            return textResult(
-              `Removed user ${user_id} from group ${group_id}.`
+            return sentenceResult(
+              `Removed user ${user_id} from group ${group_id}.`,
+              { user_id, group_id, assigned: false }
             );
           }
         )

@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { marked, plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
 import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
@@ -8,7 +9,7 @@ import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
 import { PathScopeError } from '../paths.js';
-import { budgetedList, run, textResult } from '../result.js';
+import { budgetedList, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, tagParam, titleParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -40,6 +41,7 @@ export function registerTagTools(
         'list_pages to see what carries it.',
       inputSchema: z.object({}),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async () =>
       run(async () => {
@@ -72,6 +74,7 @@ export function registerTagTools(
           .describe('Fragment to match against tag names.'),
       }),
       annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ query }) =>
       run(async () => {
@@ -106,6 +109,7 @@ export function registerTagTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ tag_id, tag, title, confirm_token }, mcp) =>
       run(async () => {
@@ -138,7 +142,10 @@ export function registerTagTools(
               objectOf(data.pages, 'the page mutation').updateTag,
               'update_tag'
             );
-            return textResult(`Renamed tag ${tag_id} to "${tag}".`);
+            return sentenceResult(`Renamed tag ${tag_id} to "${tag}".`, {
+              tag_id,
+              tag,
+            });
           }
         );
       })
@@ -156,6 +163,7 @@ export function registerTagTools(
         confirm_token: confirmTokenParam.optional(),
       }),
       annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
     async ({ tag_id, confirm_token }, mcp) =>
       run(async () => {
@@ -181,7 +189,9 @@ export function registerTagTools(
               objectOf(data.pages, 'the page mutation').deleteTag,
               'delete_tag'
             );
-            return textResult(`Deleted tag ${tag_id}.`);
+            return sentenceResult(`Deleted tag ${tag_id}.`, {
+              deleted_tag_id: tag_id,
+            });
           }
         );
       })

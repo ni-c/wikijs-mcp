@@ -44,4 +44,7 @@ services:
       DB_PASS: sandbox-only-not-a-secret
       DB_NAME: wiki
     ports:
-      - '127.0.0.1:3010:3000'
+      # Overridable because 3010 is a popular port and a workstation that
+      # already runs something there should not need a patched compose file.
+      # Set WIKIJS_PORT; the suite reads the same variable.
+      - '127.0.0.1:${WIKIJS_PORT:-3010}:3000'

@@ -16,6 +16,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Every tool declares an `outputSchema` and answers with `structuredContent`
+  beside the text block. A client no longer has to parse prose to use a result —
+  which twenty-nine of them made unavoidable, since they answered with a
+  sentence. The sentence stays, in the text block.
+
+  The tools that report wiki content carry `untrusted: true` and
+  `source: "wikijs"` as fields, not only as a preamble in the text. Page text,
+  titles, descriptions and comments are written by anyone with edit rights, so a
+  client that reads the structured half must not get them unframed. The list
+  follows the call sites: a tool is marked exactly when it already routed its
+  answer through the untrusted wrapper.
+
+  Wiki.js records are described as open objects with the top-level keys this
+  server builds. A self-hosted Wiki.js is any 2.x release, and a strict shape
+  would turn a field one adds into a tool that fails outright.
+
+### Changed
+
+- `update_page`'s stale-read refusal answers `{page_id, written: false,
+conflict: {you_saw, it_is_now}, note}` in addition to its sentence. It is
+  still **not** an error result — an `isError` would make a client surface it
+  as a failure, when what it is is an instruction for recovering.
+
+- A result too large to shrink is now an error rather than an envelope saying
+  so. The envelope was a different shape from what the tool declares it
+  returns, which the SDK refuses.
+
+- The two-call `confirm_token` prompt is an error result. What was asked for did
+  not happen, which is what `isError` says. The text is unchanged and still
+  carries the token.
+
+- The integration compose file publishes Wiki.js on `WIKIJS_PORT` (default 3010) instead of a hardcoded 3010, so a workstation that already runs
+  something there does not need a patched compose file.
+
+### Added
+
 - Tools that need a confirmation now **ask the user**, on clients that can show
   a prompt. The two-call `confirm_token` remains for clients that cannot, so
   nothing that works today stops working — but where a person can be asked, one

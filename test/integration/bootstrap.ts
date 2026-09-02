@@ -81,7 +81,7 @@ async function eventually<T>(
 }
 
 export async function bootstrap(
-  url = 'http://127.0.0.1:3010'
+  url = `http://127.0.0.1:${process.env.WIKIJS_PORT ?? '3010'}`
 ): Promise<Sandbox> {
   assertLoopback(url);
   // Wiki.js answers the setup page with a 200 and redirects elsewhere, so any
