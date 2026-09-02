@@ -171,6 +171,12 @@ function render(tools) {
     'deliberately **not** destructive: Wiki.js keeps page history, which is what',
     'separates it from the same verb in servers that do not.',
     '',
+    'Every tool declares an `outputSchema` and answers with `structuredContent` beside',
+    'the text block, so a client can use a result without parsing prose. The tools',
+    'that report wiki content carry `untrusted: true` and `source: "wikijs"` as fields',
+    'of that object — page text, titles, descriptions and comments are written by',
+    'anyone with edit rights.',
+    '',
     '## Read tools',
     '',
   ];
