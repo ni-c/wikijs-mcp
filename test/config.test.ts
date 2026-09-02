@@ -159,17 +159,58 @@ describe('loadConfig', () => {
     ).toBe(DEFAULT_LOCALE);
   });
 
-  it('treats booleans as exactly "true", never as truthiness', () => {
-    const config = loadConfig(
-      env({
-        WIKIJS_URL: 'https://w.example',
-        WIKIJS_TOKEN: 't',
-        WIKIJS_READ_ONLY: '1',
-        WIKIJS_INSECURE_TLS: 'yes',
-      })
-    );
-    expect(config.readOnly).toBe(false);
-    expect(config.insecureTls).toBe(false);
+  it('honours anything an operator plausibly meant by "read only"', () => {
+    // A protection switch is read leniently. `WIKIJS_READ_ONLY=1` from a shell
+    // script and `=yes` from a compose file are both somebody saying "do not
+    // let it write", and a parser that answers "that is not the word I wanted"
+    // by registering the write tools is answering the wrong question.
+    for (const raw of ['1', 'true', 'TRUE', 'yes', 'Yes', ' true ']) {
+      const config = loadConfig(
+        env({
+          WIKIJS_URL: 'https://w.example',
+          WIKIJS_TOKEN: 't',
+          WIKIJS_READ_ONLY: raw,
+        })
+      );
+      expect(config.readOnly, raw).toBe(true);
+    }
+  });
+
+  it('still leaves the write tools on when the value means nothing', () => {
+    for (const raw of ['', ' ', 'false', 'no', '0', 'off', 'ja']) {
+      const config = loadConfig(
+        env({
+          WIKIJS_URL: 'https://w.example',
+          WIKIJS_TOKEN: 't',
+          WIKIJS_READ_ONLY: raw,
+        })
+      );
+      expect(config.readOnly, JSON.stringify(raw)).toBe(false);
+    }
+  });
+
+  it('reads the switch that removes a protection strictly instead', () => {
+    // The asymmetry is the point: WIKIJS_INSECURE_TLS stops certificates being
+    // verified, so a typo there must fail towards verifying them.
+    for (const raw of ['yes', '1', 'TRUE', ' true ']) {
+      const config = loadConfig(
+        env({
+          WIKIJS_URL: 'https://w.example',
+          WIKIJS_TOKEN: 't',
+          WIKIJS_INSECURE_TLS: raw,
+        })
+      );
+      expect(config.insecureTls, raw).toBe(false);
+    }
+    expect(
+      loadConfig(
+        env({
+          WIKIJS_URL: 'https://w.example',
+          WIKIJS_TOKEN: 't',
+          WIKIJS_INSECURE_TLS: 'true',
+        })
+      ).insecureTls
+    ).toBe(true);
   });
 
   it('starts without credentials so tools/list still works', () => {

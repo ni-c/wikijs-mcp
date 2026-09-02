@@ -407,12 +407,16 @@ describe('users and groups', () => {
     // reset link and returns a null envelope without one. What is asserted is
     // that the server reports that rather than crashing on the null — which is
     // exactly the kind of thing a stub returning a tidy object cannot check.
-    const reset = await asking.call(
+    // The reason travels with the expectation rather than after it: a bare
+    // `expectError: true` stays green when the call starts failing for some
+    // other reason entirely, which is the failure mode worth naming here —
+    // what is being proved is that the *null envelope* is reported, not that
+    // something went wrong.
+    await asking.call(
       'reset_user_password',
       { user_id: userId },
-      { expectError: true }
+      { expectError: /no result envelope/ }
     );
-    expect(reset).toContain('no result envelope');
 
     await asking.call('delete_user', {
       user_id: userId,
@@ -432,6 +436,63 @@ describe('maintenance', () => {
       source_locale: 'zz',
       target_locale: 'yy',
     });
+  });
+});
+
+describe('WIKIJS_ALLOWED_PATHS, against a wiki that really has the pages', () => {
+  it('confines the page render and refuses the instance-wide jobs', async () => {
+    // A third server process, configured the way an operator who wants writes
+    // confined configures one. Every expectation names the refusal it wants:
+    // a bare `expectError: true` here would stay green if the call started
+    // failing because the fixture was missing, which is the same green as a
+    // scope that works.
+    const outside = parse<{ created: { id: number } }>(
+      await asking.call('create_page', {
+        path: 'team/notes',
+        title: 'Outside the scope',
+        content: '# Outside\n',
+        tags: [],
+      })
+    ).created.id;
+
+    const scoped = await startServer({
+      env: {
+        WIKIJS_URL: sandbox.url,
+        WIKIJS_TOKEN: sandbox.key,
+        WIKIJS_ALLOWED_PATHS: 'docs',
+      },
+      elicit: 'accept',
+    });
+
+    try {
+      // Rewrites stored HTML and bumps updatedAt, so it is a page write and is
+      // placed like one — which needs a real GET_PAGE_METADATA round trip.
+      await scoped.call(
+        'render_page',
+        { page_id: outside },
+        { expectError: /outside WIKIJS_ALLOWED_PATHS/ }
+      );
+      expect(
+        await scoped.call('render_page', { page_id: sandbox.setupPageId })
+      ).toContain('Re-rendered');
+
+      for (const name of [
+        'flush_page_cache',
+        'rebuild_page_tree',
+        'rebuild_search_index',
+        'purge_page_history',
+      ]) {
+        await scoped.call(
+          name,
+          name === 'purge_page_history' ? { older_than: 'P3Y' } : {},
+          { expectError: /cannot be confined to WIKIJS_ALLOWED_PATHS/ }
+        );
+      }
+    } finally {
+      await scoped.close();
+    }
+
+    await asking.call('delete_page', { page_id: outside });
   });
 });
 
