@@ -505,14 +505,20 @@ export function registerPageTools(
           title?: string;
           locale?: string;
         }>;
-        // Wiki.js' own `limit` counts joined tag rows, not pages, so the ceiling
-        // is applied here — otherwise this would scan a fraction of what it
-        // reports and quietly miss matches.
-        const all = everything.slice(0, GREP_MAX_PAGES);
-        const candidates = all.filter((p) =>
+        // Filter first, cap second. `tags` and `locale` are GraphQL variables
+        // and have already narrowed `everything`; path_prefix is the one
+        // narrowing that happens here, and applying it after the cap made it
+        // narrow the wrong set — on a wiki whose 200 most recently updated
+        // pages are all under blog/, a search under docs/ answered "0 pages
+        // scanned, 0 matched" without ever looking at the 800 pages that did
+        // match. Nothing is saved by capping first: the whole list is already
+        // in memory, because Wiki.js' own `limit` counts joined tag rows rather
+        // than pages and so is never sent.
+        const matching = everything.filter((p) =>
           path_prefix === undefined ? true : p.path.startsWith(path_prefix)
         );
-        const wanted = candidates.slice(0, budget);
+        const all = matching.slice(0, GREP_MAX_PAGES);
+        const wanted = all.slice(0, budget);
 
         // One deadline for the whole fetch loop. Each request has its own
         // 30-second timeout, so without this a slow upstream turns a single tool
@@ -559,16 +565,19 @@ export function registerPageTools(
         });
 
         const notes: string[] = [];
-        if (candidates.length > wanted.length) {
+        if (all.length > wanted.length) {
           notes.push(
-            `${candidates.length - wanted.length} further pages matched the ` +
+            `${all.length - wanted.length} further pages matched the ` +
               'filters but were not fetched. Raise max_pages, or narrow with ' +
               'path_prefix, tags or locale.'
           );
         }
-        if (everything.length > all.length) {
+        if (matching.length > all.length) {
+          // Counted after the filter, because that is the number the caller can
+          // do something about: "the wiki has 5000 pages" says nothing when the
+          // question was about the 800 under docs/.
           notes.push(
-            `This wiki has ${everything.length} pages; only the ` +
+            `${matching.length} pages matched the filters; only the ` +
               `${GREP_MAX_PAGES} most recently updated were considered.`
           );
         }

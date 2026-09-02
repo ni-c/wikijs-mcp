@@ -70,7 +70,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **`svg-asset-set`** rather than from copies kept here — 571 fewer lines, and
   one place to fix each. None of them has a runtime dependency of its own.
 
+- `WIKIJS_READ_ONLY` now accepts `1` and `yes` as well as `true`, trimmed and
+  case-insensitively. `WIKIJS_INSECURE_TLS` deliberately still takes only the
+  exact word: a switch that **adds** a protection should honour anything an
+  operator plausibly meant by "on", and one that **removes** a protection should
+  not.
+
 ### Fixed
+
+- **A confirmation for `update_group` did not cover the group's name or its login
+  redirect**, although the mutation replaces both. A token issued for a change to
+  the page rules would execute a call that also renamed the group — to
+  "Administrators", say, which is what every administration view and every later
+  `list_groups` answer then reports — and repointed `redirectOnLogin`, where
+  Wiki.js sends a member once it has authenticated them. Both are now bound, and
+  named in the prompt. `create_user` had the same gap for `password`,
+  `provider_key`, `must_change_password` and `send_welcome_email`.
+
+  Found by reading; kept out by `test/confirmation-binding.test.ts`, which varies
+  every argument of every gated tool in turn and requires the token to break —
+  and which fails when a gated tool gains an argument nobody accounted for.
+
+- **A refusal written by Wiki.js itself went into the model's context unbounded
+  and unmarked.** `responseResult.message` is as far upstream as a database
+  driver — a comment with a null `replyTo` comes back with the whole INSERT
+  statement in it — and that one error path skipped the 2000-character cap the
+  other three go through. It is capped now, and set off under a line saying the
+  upstream wrote it, rather than folded into this server's own sentence. The
+  error slug is reduced to the shape a slug has, so it cannot open a line of its
+  own beside that marker.
+
+- **`grep_pages` applied `path_prefix` after the 200-page ceiling instead of
+  before it.** On a wiki whose most recently updated pages are all under `blog/`,
+  a search under `docs/` answered "0 pages scanned, 0 matched" without reading a
+  single one of the pages that did match. The ceiling exists to bound the fetch,
+  so it now applies to the pages that survive the filter; the accompanying note
+  counts those too, since that is the number a caller can act on.
+
+- **`identifier()` let the bidi control characters through**, including
+  RIGHT-TO-LEFT OVERRIDE. Its rule listed four invisible characters and the class
+  has rather more, so `move_page` would show a destination path that rendered
+  backwards from the one it was about to write. The rule is now stated as the
+  Unicode categories it always meant (`Cc`, `Cf`, `Zl`, `Zp`, `Zs`) rather than
+  as a list of code points.
+
+- **`WIKIJS_ALLOWED_PATHS` did not cover four of the tools the documentation said
+  it covered.** `flush_page_cache`, `rebuild_page_tree` and
+  `rebuild_search_index` act on every page in the wiki and now refuse while the
+  variable is set, like the two destructive maintenance tools already did — they
+  lose nothing, but "the whole wiki" is outside any prefix. And `render_page` is
+  now placed against the prefix like every other page write: it changes no
+  content, but it rewrites the stored HTML and bumps `updatedAt`, which is the
+  field `update_page` reads to detect somebody else's edit.
 
 - An entry in `WIKIJS_ALLOW_TOOLS` that is not tool-name-shaped is now
   **redacted** in the error rather than quoted back. `WIKIJS_API_KEY` and

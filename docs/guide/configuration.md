@@ -77,9 +77,13 @@ Reads are deliberately **not** restricted. A scope on reads turns a wiki into a
 confusing half-wiki where the tree has holes, and the API key's own page rules are
 the right place to hide pages outright — they hide them from the browser too.
 
-Four things it cannot confine, and refuses instead of pretending:
+Three kinds of write it cannot confine, and refuses instead of pretending:
 
-- `purge_page_history` and `migrate_pages_locale` act on every page there is.
+- The instance-wide maintenance tools act on every page there is:
+  `purge_page_history`, `migrate_pages_locale`, `flush_page_cache`,
+  `rebuild_page_tree` and `rebuild_search_index`. The last three lose nothing —
+  they cost time — but "every page in the wiki" is outside any prefix all the
+  same, so they are refused too.
 - `update_tag` and `delete_tag` affect every page carrying the tag, wherever it
   lives.
 - `update_comment` and `delete_comment` — Wiki.js does not report which page a
@@ -87,6 +91,9 @@ Four things it cannot confine, and refuses instead of pretending:
   allowed area. `create_comment` is given the page and is checked normally.
 
 Each of those refuses with a message naming the variable. Unset it to run them.
+`render_page` writes a single page and is checked against the prefix like any other
+page write — it changes no content, but it rewrites the stored HTML and bumps
+`updatedAt`, which is the field `update_page` reads to detect a concurrent edit.
 
 Asset writes are checked against the **asset folder** path, which is a separate
 namespace from page paths: with `WIKIJS_ALLOWED_PATHS=docs`, uploads go into the

@@ -112,8 +112,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // because that is what the neighbouring servers use.
   const token = env.WIKIJS_TOKEN ?? env.WIKIJS_API_KEY;
   const locale = env.WIKIJS_LOCALE?.trim() || DEFAULT_LOCALE;
+  // The two switches are parsed differently on purpose, and the difference is
+  // which way a typo should fall. WIKIJS_INSECURE_TLS *removes* a protection,
+  // so only the exact word turns it on and `WIKIJS_INSECURE_TLS=yes` keeps
+  // certificates verified. WIKIJS_READ_ONLY *adds* one, so anything an operator
+  // plausibly meant by "on" is honoured — `1` from a shell script, `yes` from a
+  // compose file, `TRUE` from a Windows environment — because the alternative
+  // is a server that quietly registered its write tools while its operator
+  // believes it did not.
   const insecureTls = env.WIKIJS_INSECURE_TLS === 'true';
-  const readOnly = env.WIKIJS_READ_ONLY === 'true';
+  const readOnly = /^(1|true|yes)$/i.test(env.WIKIJS_READ_ONLY?.trim() ?? '');
   const allowedPaths = env.WIKIJS_ALLOWED_PATHS;
   const allowTools = env.WIKIJS_ALLOW_TOOLS;
   const denyTools = env.WIKIJS_DENY_TOOLS;

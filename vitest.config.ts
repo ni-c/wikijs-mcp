@@ -21,11 +21,12 @@ export default defineConfig({
         // leaving it in reports 0% for a file that is covered.
         'src/grep-worker.ts',
       ],
-      // Measured on 2026-08-30 after the security audit: 96.61 statements,
-      // 87.79 branches, 98.39 functions, 97.00 lines. These sit just below that, with headroom on
-      // functions. Write the missing tests rather than lowering them — vitest 4
-      // measures AST-based and stricter than v3, so a major bump can cost a few
-      // points and the answer to that is tests too.
+      // Measured on 2026-09-02 after the second security audit: 97.49
+      // statements, 88.50 branches, 99.65 functions, 97.97 lines. These sit
+      // below that, with headroom on functions. Write the missing tests rather
+      // than lowering them — vitest 4 measures AST-based and stricter than v3,
+      // so a major bump can cost a few points and the answer to that is tests
+      // too.
       thresholds: {
         statements: 95,
         branches: 85,

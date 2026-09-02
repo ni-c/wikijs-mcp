@@ -634,7 +634,7 @@ Creates an empty group. It starts with no permissions and no page rules, so it g
 
 **Update a group’s permissions** — write, destructive
 
-Replaces a group’s name, permissions and page rules wholesale — this is not a partial update, and omitting a rule deletes it. Read the group with get_group first and send back the full set with your change applied. Requires a confirmation token, because this is the call that decides who can read and edit the wiki.
+Replaces a group’s name, permissions, page rules and login redirect wholesale — this is not a partial update, and omitting a rule deletes it, just as omitting redirect_on_login resets it to "/". Read the group with get_group first and send back the full set with your change applied. Requires a confirmation token, because this is the call that decides who can read and edit the wiki.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |

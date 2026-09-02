@@ -56,7 +56,7 @@ seven than from sixty-two — see
 | `WIKIJS_URL`           | yes      | Base URL of the wiki, e.g. `https://wiki.example.com`. A trailing `/graphql` is trimmed    |
 | `WIKIJS_TOKEN`         | yes      | API key from Administration → API Access. `WIKIJS_API_KEY` is accepted as an alias         |
 | `WIKIJS_LOCALE`        | no       | Locale assumed by page tools that are not given one (default `en`)                         |
-| `WIKIJS_READ_ONLY`     | no       | `true` registers only the read tools                                                       |
+| `WIKIJS_READ_ONLY`     | no       | `true`, `1` or `yes` registers only the read tools                                         |
 | `WIKIJS_ALLOWED_PATHS` | no       | Comma-separated page path prefixes the write tools are confined to, e.g. `docs,team/notes` |
 | `WIKIJS_ALLOW_TOOLS`   | no       | Comma-separated tool names, `list_*` prefixes, or `essential` for a curated preset         |
 | `WIKIJS_DENY_TOOLS`    | no       | Same syntax; removed from whatever `WIKIJS_ALLOW_TOOLS` left                               |
@@ -123,10 +123,12 @@ Matching is by path segment, so `docs` covers `docs/setup` and **not**
 the allowed area or into a protected one.
 
 Asset writes are checked against the asset folder tree, which is a separate
-namespace. The operations that cannot be confined to a prefix at all — the
+namespace. The operations that cannot be confined to a prefix at all — all six
 instance-wide maintenance tools, the tag tools, and comment edits, because
 Wiki.js does not say which page a comment is on — refuse while the variable is
-set rather than making a silent exception.
+set rather than making a silent exception. That includes `flush_page_cache`,
+`rebuild_page_tree` and `rebuild_search_index`, which lose nothing but still act
+on the whole wiki.
 
 ## Installation
 

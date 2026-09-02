@@ -8,7 +8,7 @@ import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { objectOf } from '../normalize.js';
-import { PathScopeError, type PathScope } from '../paths.js';
+import { assertWithinScope, PathScopeError, type PathScope } from '../paths.js';
 import { jsonResult, run, textResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
@@ -35,6 +35,13 @@ const olderThanParam = z
  * wiki rather than one page, and several take minutes on a large instance while
  * the API keeps answering. All of them are gated except `render_page`, which
  * affects exactly one page and cannot lose anything.
+ *
+ * Gating and scoping are separate questions and answered separately here. The
+ * three lossless instance-wide operations are deliberately *not* gated — a
+ * dialog in front of something that loses nothing is how people learn to tick
+ * without reading — but they are still refused under WIKIJS_ALLOWED_PATHS,
+ * because that variable is a promise about reach rather than about damage, and
+ * "every page in the wiki" is outside any prefix.
  */
 /**
  * Refuses an operation that acts on the whole wiki while writes are confined.
@@ -44,6 +51,12 @@ const olderThanParam = z
  * way to run them anyway. An operator who set WIKIJS_ALLOWED_PATHS was told
  * nothing outside it can be written; this keeps that true instead of quietly
  * making it an exception.
+ *
+ * Applied to every instance-wide operation, not only the destructive ones. The
+ * lossless three cost the whole wiki minutes of slower rendering and incomplete
+ * search, which is an effect outside the prefix even though nothing is deleted;
+ * and a scope enforced on some members of a class is the sort of thing whose
+ * documentation stays categorical long after the code stopped being.
  */
 function refuseWhenScoped(scope: PathScope, tool: string): void {
   if (!scope.active) return;
@@ -79,6 +92,27 @@ export function registerMaintenanceTools(
     },
     async ({ page_id }) =>
       run(async () => {
+        // The one page-writing tool that took a page id and never asked where
+        // that page lives. It changes no content, but it rewrites the stored
+        // HTML and bumps updatedAt — and update_page's conflict check reads
+        // exactly that field, so an unscoped render is also a way to make
+        // somebody else's next write outside the prefix fail. Only looked up
+        // while a scope is set, the way create_comment does it, because the
+        // extra round trip buys nothing when every path is allowed.
+        if (scope.active) {
+          const page = objectOf(
+            objectOf(
+              (
+                await api.execute('render_page', gql.GET_PAGE_METADATA, {
+                  id: page_id,
+                })
+              ).pages,
+              'the page query'
+            ).single,
+            `page ${page_id}`
+          );
+          assertWithinScope(scope, String(page.path), 'page path');
+        }
         const data = await api.execute('render_page', gql.RENDER_PAGE, {
           id: page_id,
         });
@@ -107,6 +141,7 @@ export function registerMaintenanceTools(
     },
     async () =>
       run(async () => {
+        refuseWhenScoped(scope, 'flush_page_cache');
         const data = await api.execute('flush_page_cache', gql.FLUSH_CACHE);
         assertSucceeded(
           objectOf(data.pages, 'the page mutation').flushCache,
@@ -134,6 +169,7 @@ export function registerMaintenanceTools(
     },
     async () =>
       run(async () => {
+        refuseWhenScoped(scope, 'rebuild_page_tree');
         const data = await api.execute('rebuild_page_tree', gql.REBUILD_TREE);
         assertSucceeded(
           objectOf(data.pages, 'the page mutation').rebuildTree,
@@ -162,6 +198,7 @@ export function registerMaintenanceTools(
     },
     async () =>
       run(async () => {
+        refuseWhenScoped(scope, 'rebuild_search_index');
         const data = await api.execute(
           'rebuild_search_index',
           adminGql.REBUILD_SEARCH_INDEX

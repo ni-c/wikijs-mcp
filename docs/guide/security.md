@@ -62,7 +62,10 @@ and slow, and that was the argument. **Nothing is lost by any of them** — the 
 time, not content — and a dialog in front of an operation that loses nothing is how
 people learn to tick without reading, which spends exactly the attention
 `purge_page_history` needs. Their `confirm_token` parameter is gone from the schema
-too, so a caller that still sends one is told rather than quietly ignored.
+too, so a caller that still sends one is told rather than quietly ignored. They are
+nonetheless refused while `WIKIJS_ALLOWED_PATHS` is set: whether an operation needs a
+person's attention and whether it stays inside the prefix an operator named are two
+different questions.
 :::
 
 See [Asking a person](/guide/approval).

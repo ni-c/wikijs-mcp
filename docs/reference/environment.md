@@ -9,11 +9,11 @@
 | `WIKIJS_URL` | yes | — | Base URL of the Wiki.js instance, e.g. `https://wiki.example.com`. A trailing `/graphql` is trimmed |
 | `WIKIJS_TOKEN` | yes | — | API key from Administration → API Access. `WIKIJS_API_KEY` is accepted as an alias |
 | `WIKIJS_LOCALE` | no | `en` | Locale assumed by page tools that are not given one |
-| `WIKIJS_READ_ONLY` | no | `false` | `true` registers only the read tools |
+| `WIKIJS_READ_ONLY` | no | `false` | `true`, `1` or `yes` registers only the read tools |
 | `WIKIJS_ALLOWED_PATHS` | no | — | Page path prefixes the write tools are confined to, e.g. `docs,team/notes` |
 | `WIKIJS_ALLOW_TOOLS` | no | — | Tool names, `list_*` prefixes or `essential`; only these register |
 | `WIKIJS_DENY_TOOLS` | no | — | Same syntax; subtracted from whatever the allow list left |
-| `WIKIJS_INSECURE_TLS` | no | `false` | `true` accepts self-signed certificates |
+| `WIKIJS_INSECURE_TLS` | no | `false` | Exactly `true` accepts self-signed certificates |
 | `ELICITATION` | no | `true` | `false` replaces the approval dialog with the two-call token. **Not prefixed** |
 
 ## `WIKIJS_LOCALE`
@@ -37,9 +37,13 @@ protected one.
 An empty or whitespace-only value counts as unset, the same as the tool lists. A
 prefix containing `..` or a wildcard aborts startup.
 
-Four things it cannot confine, and refuses instead of pretending:
+Three kinds of write it cannot confine, and refuses instead of pretending:
 
-- `purge_page_history` and `migrate_pages_locale` act on every page there is.
+- The instance-wide maintenance tools act on every page there is:
+  `purge_page_history`, `migrate_pages_locale`, `flush_page_cache`,
+  `rebuild_page_tree` and `rebuild_search_index`. The last three lose nothing —
+  they cost time — but "every page in the wiki" is outside any prefix all the
+  same, so they are refused too.
 - `update_tag` and `delete_tag` affect every page carrying the tag, wherever it
   lives.
 - `update_comment` and `delete_comment` — Wiki.js does not report which page a
@@ -47,6 +51,9 @@ Four things it cannot confine, and refuses instead of pretending:
   allowed area. `create_comment` is given the page and is checked normally.
 
 Each of those refuses with a message naming the variable. Unset it to run them.
+`render_page` writes a single page and is checked against the prefix like any other
+page write — it changes no content, but it rewrites the stored HTML and bumps
+`updatedAt`, which is the field `update_page` reads to detect a concurrent edit.
 
 Asset writes are checked against the **asset folder** path, which is a separate
 namespace from page paths: with `WIKIJS_ALLOWED_PATHS=docs`, uploads go into the
