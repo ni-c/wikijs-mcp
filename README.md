@@ -7,6 +7,7 @@
 [![license](https://img.shields.io/npm/l/%40ni-c%2Fwikijs-mcp)](LICENSE)
 [![container](https://img.shields.io/badge/ghcr.io-ni--c%2Fwikijs--mcp-blue)](https://github.com/ni-c/wikijs-mcp/pkgs/container/wikijs-mcp)
 [![docs](https://img.shields.io/badge/docs-wikijs--mcp.ni--c.de-informational)](https://wikijs-mcp.ni-c.de)
+[![HTTP • via mcp-hub](https://img.shields.io/badge/HTTP-via%20mcp--hub-6f42c1)](https://mcp-hub.ni-c.de)
 [![sponsor](https://img.shields.io/badge/sponsor-ni--c-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/ni-c)
 
 <!-- The opening is three paragraphs in a fixed shape: what it IS, what it LETS A
@@ -43,6 +44,20 @@ seven than from sixty-two — see
 <!-- Absolute, like the diagram: npm does not resolve repo-relative paths, and a
      recording nobody sees is a recording that was not worth making. -->
 <img src="https://wikijs-mcp.ni-c.de/demo.gif" alt="Searching a wiki for text the built-in search cannot find, then being refused an ambiguous edit" width="800">
+
+## What makes it different
+
+**Finds text search cannot.** Wiki.js' default engine indexes titles and
+descriptions only — so `search_pages` says which engine is running, and
+`grep_pages` searches the actual text of pages.
+
+**Will not clobber a colleague.** `update_page` compares against the moment you
+read the page and refuses to overwrite an edit saved in between. Surgical edits
+must match exactly once.
+
+**Writes can be confined to part of the wiki.** `WIKIJS_ALLOWED_PATHS` limits the
+writing page and asset tools to path prefixes, matched by path segment, while
+reads stay unrestricted.
 
 ## Requirements
 
@@ -173,6 +188,40 @@ docker run --rm -i \
   ghcr.io/ni-c/wikijs-mcp
 ```
 
+### Through mcp-hub
+
+A client that cannot spawn a local process — ChatGPT connectors, Claude on the web,
+Cursor, LibreChat — reaches wikijs-mcp through [mcp-hub](https://mcp-hub.ni-c.de): one
+container serves many stdio MCP servers over Streamable HTTP, with an OAuth 2.1 login
+behind a single password and long-lived tokens for the clients that cannot do OAuth. Its
+`/hub` endpoint puts every server behind six meta-tools, so one connector reaches all of
+them without N×tool schemas in the model's context, and it speaks both protocol revisions
+— a question this server asks travels through it to the person at the far end.
+
+Its `/config/mcp.json` uses Claude Code's format, so the entry is the one you already
+have:
+
+```json
+{
+  "mcpServers": {
+    "wikijs-mcp": {
+      "command": "npx",
+      "args": ["-y", "@ni-c/wikijs-mcp"],
+      "env": {
+        "WIKIJS_URL": "https://wiki.example.com",
+        "WIKIJS_TOKEN": "…",
+        "WIKIJS_ALLOW_TOOLS": "essential"
+      },
+      "denyTools": ["delete_*,purge_page_history,set_api_state"]
+    }
+  }
+}
+```
+
+`allowTools` and `denyTools` there are the hub's **own** per-server filter, which is not
+the same thing as `*_ALLOW_TOOLS` in `env` — the difference, and the mistake it invites,
+are in the [client guide](https://wikijs-mcp.ni-c.de/guide/clients#through-mcp-hub).
+
 ## Tools
 
 62 tools. ★ marks the `essential` preset; ⚠ marks a tool that **asks a person**
@@ -279,6 +328,17 @@ so an edit saved from the web UI while the model was thinking is caught rather t
 silently discarded. `get_page_conflict` shows the newer version; `force: true`
 overwrites on purpose.
 
+## Not exposed, on purpose
+
+**No tool that creates an API key.** Wiki.js can do it over GraphQL, and this
+server deliberately cannot: a model able to mint a full-access key could grant
+itself everything the three narrowing mechanisms above take away.
+
+**Reads are never path-scoped.** `WIKIJS_ALLOWED_PATHS` confines writes only — a
+scope on reads turns a wiki into a confusing half-wiki, and the key's own group
+and page rules are the right place to hide pages, because they apply to
+everything else using that key too.
+
 ## Safety
 
 - **Destructive and administrative tools ask a person.** Where the client supports
@@ -309,6 +369,26 @@ overwrites on purpose.
   `WIKIJS_DENY_TOOLS` cuts finer along the same line — a filtered tool is never
   built, not refused at call time.
 
+## Documentation
+
+The full guide, tool reference and security notes live at
+**[wikijs-mcp.ni-c.de](https://wikijs-mcp.ni-c.de)** (source in [`docs/`](docs/)).
+
+## Development
+
+```sh
+npm install
+npm run lint && npm run typecheck && npm run build && npm test
+```
+
+The unit suite drives the built server over the real MCP protocol against a fake
+Wiki.js, so no instance is needed; `npm run test:integration` is the separate
+suite that brings a real Wiki.js up in Docker and exercises every tool against it.
+The architecture diagram and social card are generated — edit
+`docs/assets/architecture.source.svg` and run `npm run assets`, never the rendered
+copies — and `npm run docs:tools` regenerates the tool reference from the
+catalogue.
+
 ## Releasing
 
 1. Add the CHANGELOG entry and bump `package.json`.
@@ -318,6 +398,13 @@ overwrites on purpose.
 The release workflow publishes to npm (Trusted Publishing, with provenance), creates
 the GitHub release from the CHANGELOG section and updates the MCP Registry entry.
 
+## Contributing
+
+Issues, discussions and pull requests are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md). For vulnerabilities please use
+[private reporting](https://github.com/ni-c/wikijs-mcp/security/advisories/new)
+rather than a public issue; the policy is in [SECURITY.md](SECURITY.md).
+
 ## License
 
-MIT © Willi Thiel
+[MIT](LICENSE) © Willi Thiel
