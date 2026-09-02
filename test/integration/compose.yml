@@ -9,7 +9,11 @@
 # be a mistake the binding is there to prevent.
 services:
   db:
-    image: postgres:15-alpine
+    # Overridable like every other image in this family. Wiki.js 2.x is the only
+    # thing that decides which Postgres majors are safe here, so the default
+    # stays pinned to what upstream tests against — but the weekly run should be
+    # able to ask about a newer one without editing this file.
+    image: ${POSTGRES_IMAGE:-postgres:15-alpine}
     environment:
       POSTGRES_DB: wiki
       POSTGRES_USER: wikijs
