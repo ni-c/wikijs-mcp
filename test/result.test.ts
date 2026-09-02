@@ -22,8 +22,15 @@ import {
   untrustedResult,
 } from '../src/result.js';
 
-const textOf = (result: { content: Array<{ text?: string }> }): string =>
-  result.content.map((part) => part.text ?? '').join('\n');
+// `run` answers with `CallToolResult | InputRequiredResult`, and only the
+// first half carries `content`. Typing the parameter off `run` itself keeps
+// both halves acceptable — a bare `{ content: … }` shape is one an input
+// request overlaps in no property at all — and the cast then says out loud
+// that every call in this file is on the result half.
+const textOf = (result: Awaited<ReturnType<typeof run>>): string =>
+  ((result as { content?: unknown }).content as Array<{ text?: string }>)
+    .map((part) => part.text ?? '')
+    .join('\n');
 
 describe('result shapes', () => {
   it('marks an error result', () => {

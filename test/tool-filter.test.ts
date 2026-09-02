@@ -210,7 +210,10 @@ describe('the filter applied to a real server', () => {
     // than a result carrying isError, so both calls reject. The equivalence is
     // what this test is about and is unaffected.
     const refusal = (harness: {
-      call: (name: string, args: object) => Promise<unknown>;
+      // `Record<string, unknown>` rather than `object`: `call` is declared as a
+      // property on `Connected`, so its parameter is checked contravariantly
+      // and the wider `object` does not accept the narrower argument type.
+      call: (name: string, args: Record<string, unknown>) => Promise<unknown>;
     }) =>
       harness.call('delete_page', { page_id: 1 }).then(
         () => {

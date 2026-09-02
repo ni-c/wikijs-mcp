@@ -257,7 +257,12 @@ async function gatedToolNames(): Promise<string[]> {
   await close();
   return tools
     .filter((tool) => {
-      const schema = tool.inputSchema as { properties?: Record<string, void> };
+      // The values are never read, only tested for presence — but `void` is
+      // not a type the schema's property values can be converted to, and
+      // saying `unknown` costs nothing here.
+      const schema = tool.inputSchema as {
+        properties?: Record<string, unknown>;
+      };
       return schema.properties?.confirm_token !== undefined;
     })
     .map((tool) => tool.name);
