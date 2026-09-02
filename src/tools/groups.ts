@@ -8,7 +8,7 @@ import {
   WRITE,
   WRITE_IDEMPOTENT,
 } from './annotations.js';
-import { fingerprint, identifier } from '../resource-key.js';
+import { fingerprint, identifier, label } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -142,8 +142,9 @@ export function registerGroupTools(
     {
       title: 'Update a group’s permissions',
       description:
-        'Replaces a group’s name, permissions and page rules wholesale — this ' +
-        'is not a partial update, and omitting a rule deletes it. Read the ' +
+        'Replaces a group’s name, permissions, page rules and login redirect ' +
+        'wholesale — this is not a partial update, and omitting a rule deletes ' +
+        'it, just as omitting redirect_on_login resets it to "/". Read the ' +
         'group with get_group first and send back the full set with your ' +
         'change applied. Requires a confirmation token, because this is the ' +
         'call that decides who can read and edit the wiki.',
@@ -189,25 +190,38 @@ export function registerGroupTools(
           confirmations,
           {
             tool: 'update_group',
-            // The content, not the count. Binding `permissions.length` would
-            // give ["read:pages"] and ["manage:system"] the same key, so a
-            // confirmation for a harmless narrowing would execute a handover of
-            // the whole instance.
+            // Every argument the mutation sends, not just the ones that read as
+            // dangerous. The content, not the count: binding
+            // `permissions.length` would give ["read:pages"] and
+            // ["manage:system"] the same key, so a confirmation for a harmless
+            // narrowing would execute a handover of the whole instance. And the
+            // name and the redirect for the same reason one step further out —
+            // this mutation replaces them too, so a token issued for a rule
+            // change would otherwise also rename "Interns" to "Administrators"
+            // (which is what every admin view and every later list_groups then
+            // reports) and repoint where members land after signing in.
             targets: [
               `group:${group_id}`,
+              `name:${fingerprint(name)}`,
               `permissions:${fingerprint([...permissions].sort())}`,
               `rules:${fingerprint(page_rules)}`,
+              `redirect:${fingerprint(redirect_on_login ?? '/')}`,
             ],
             what:
-              `replace the permissions of group ${group_id} with ` +
+              `rename group ${group_id} to "${label(name, 'group name')}", ` +
+              'replace its permissions with ' +
               // Permission names are server vocabulary (read:pages,
               // manage:system), never anything the wiki's users wrote, so they
               // are safe to name — and naming them is the point: a model
               // approving "1 permission" cannot see which one.
-              `${permissions.map((p) => identifier(p, 'permission')).join(', ') || 'none'} ` +
-              `and ${page_rules.length} page rule(s)`,
+              `${permissions.map((p) => identifier(p, 'permission')).join(', ') || 'none'}, ` +
+              `set ${page_rules.length} page rule(s) and send members to ` +
+              `${identifier(redirect_on_login ?? '/', 'login redirect')} after they sign in`,
             consequence:
-              'This decides what every member of the group can read and edit; omitted rules are deleted.',
+              'This decides what every member of the group can read and edit; ' +
+              'omitted rules are deleted. The name is what every administration ' +
+              'view shows, and the redirect is where Wiki.js sends a member once ' +
+              'they have authenticated.',
             confirmToken: confirm_token,
           },
           async () => {

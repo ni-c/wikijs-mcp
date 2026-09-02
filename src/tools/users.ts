@@ -14,7 +14,7 @@ import {
   WRITE,
   WRITE_IDEMPOTENT,
 } from './annotations.js';
-import { fingerprint } from '../resource-key.js';
+import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
@@ -187,15 +187,34 @@ export function registerUserTools(
           confirmations,
           {
             tool: 'create_user',
-            // The group list is part of the target: a confirmation for an
-            // account in no group must not create one in the administrators.
+            // Every argument, not only the ones that read as dangerous. The
+            // group list because a confirmation for an account in no group must
+            // not create one in the administrators; the password because a
+            // token issued for an invitation must not create an account with a
+            // credential the caller chose; and `provider_key` because it decides
+            // whether the password is even used or the account is claimed
+            // through an identity provider instead.
             targets: [
               `email:${email}`,
+              `name:${fingerprint(name)}`,
+              `password:${fingerprint(password ?? '')}`,
+              `provider:${provider_key ?? 'local'}`,
+              `mustchange:${String(must_change_password ?? false)}`,
+              `welcome:${String(send_welcome_email ?? false)}`,
               ...(groups ?? []).map((id) => `group:${id}`),
             ],
-            what: `create a wiki account in ${(groups ?? []).length} group(s)`,
+            what:
+              `create a wiki account for ${identifier(email, 'email address')} ` +
+              `in ${(groups ?? []).length} group(s), signing in through ` +
+              `${identifier(provider_key ?? 'local', 'authentication provider')}` +
+              (password === undefined
+                ? ''
+                : ', with a password chosen by the caller'),
             consequence:
-              'The account can sign in to the wiki with whatever its groups allow.',
+              'The account can sign in to the wiki with whatever its groups allow.' +
+              (send_welcome_email === true
+                ? ' Wiki.js emails the address an invitation.'
+                : ''),
             confirmToken: confirm_token,
           },
           async () => {
