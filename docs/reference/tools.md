@@ -196,7 +196,7 @@ Lists the images and files in one asset folder. Folder 0 is the root. Assets are
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `folder_id` | unknown | no | Folder id from list_asset_folders. 0 (default) is the root. |
+| `folder_id` | integer,number | no | Folder id from list_asset_folders. 0 (default) is the root. |
 | `kind` | `"ALL"` \| `"IMAGE"` \| `"BINARY"` | no | Restrict to images or to non-image files. |
 
 ### `list_asset_folders`
@@ -207,7 +207,7 @@ Lists the folders directly under an asset folder. Folder 0 is the root. Wiki.js 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `parent_folder_id` | unknown | no | Parent folder id. 0 (default) is the root. |
+| `parent_folder_id` | integer,number | no | Parent folder id. 0 (default) is the root. |
 
 ### `list_comments`
 
@@ -463,7 +463,7 @@ Uploads an image or file to an asset folder, so it can be embedded in a page. Co
 | --- | --- | --- | --- |
 | `filename` | string | yes | File name including its extension, e.g. "diagram.png". |
 | `content_base64` | string | yes | File contents, base64-encoded. |
-| `folder_id` | unknown | no | Target folder id. 0 (default) is the root. |
+| `folder_id` | integer,number | no | Target folder id. 0 (default) is the root. |
 
 ### `create_asset_folder`
 
@@ -473,7 +473,7 @@ Creates a folder in the asset store. The slug is what appears in the URL of ever
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `parent_folder_id` | unknown | no | Parent folder id. 0 (default) is the root. |
+| `parent_folder_id` | integer,number | no | Parent folder id. 0 (default) is the root. |
 | `slug` | string | yes | URL segment for the folder. |
 | `name` | string | no | Display name (defaults to the slug). |
 

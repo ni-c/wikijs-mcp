@@ -54,11 +54,33 @@ function typeName(schema) {
   if (Array.isArray(schema.enum)) {
     return schema.enum.map((v) => `\`"${v}"\``).join(' \\| ');
   }
+  // A nullable field arrives as `anyOf` branches rather than as a `type` array:
+  // the array form is what several MCP clients read as a single type and then
+  // drop, so the schemas avoid it. The page still says "boolean,null".
+  if (Array.isArray(schema.anyOf)) {
+    return [...new Set(schema.anyOf.map(typeName))].join(',');
+  }
+  if (Array.isArray(schema.type)) return schema.type.join(',');
   if (schema.type === 'array') {
     return `${typeName(schema.items)}[]`;
   }
   if (schema.type === 'object') return 'object';
   return schema.type ?? 'unknown';
+}
+
+/**
+ * The description of a field, wherever the schema kept it.
+ *
+ * On an `anyOf` it sits on the branch it describes rather than beside them:
+ * that is what keeps zod from folding the branches back into a `type` array.
+ */
+function describe(schema) {
+  if (!schema) return '';
+  if (schema.description) return schema.description;
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.map(describe).find(Boolean) ?? '';
+  }
+  return '';
 }
 
 /**
@@ -127,7 +149,7 @@ function renderTool(tool) {
   for (const name of names) {
     const schema = properties[name];
     lines.push(
-      `| \`${name}\` | ${typeName(schema)} | ${required.has(name) ? 'yes' : 'no'} | ${escapeCell(schema?.description)} |`
+      `| \`${name}\` | ${typeName(schema)} | ${required.has(name) ? 'yes' : 'no'} | ${escapeCell(describe(schema))} |`
     );
   }
   lines.push('');
