@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      last in the file so the link definitions come along. -->
 <!-- #region changelog -->
 
-## [Unreleased]
+## [0.2.0] - 2026-09-03
 
 ### Added
 
@@ -31,32 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Wiki.js records are described as open objects with the top-level keys this
   server builds. A self-hosted Wiki.js is any 2.x release, and a strict shape
   would turn a field one adds into a tool that fails outright.
-
-### Changed
-
-- The advertised schemas avoid a spelling that is legal JSON Schema and still
-  gets a tool refused, or its constraint silently dropped, by some MCP clients:
-  an open object now writes `"additionalProperties": true` rather than the
-  empty schema `{}` zod emits for it. What the tools accept and return is
-  unchanged; only the way the schema says so is.
-
-- `update_page`'s stale-read refusal answers `{page_id, written: false,
-conflict: {you_saw, it_is_now}, note}` in addition to its sentence. It is
-  still **not** an error result — an `isError` would make a client surface it
-  as a failure, when what it is is an instruction for recovering.
-
-- A result too large to shrink is now an error rather than an envelope saying
-  so. The envelope was a different shape from what the tool declares it
-  returns, which the SDK refuses.
-
-- The two-call `confirm_token` prompt is an error result. What was asked for did
-  not happen, which is what `isError` says. The text is unchanged and still
-  carries the token.
-
-- The integration compose file publishes Wiki.js on `WIKIJS_PORT` (default 3010) instead of a hardcoded 3010, so a workstation that already runs
-  something there does not need a patched compose file.
-
-### Added
 
 - Tools that need a confirmation now **ask the user**, on clients that can show
   a prompt. The two-call `confirm_token` remains for clients that cannot, so
@@ -82,19 +56,29 @@ conflict: {you_saw, it_is_now}, note}` in addition to its sentence. It is
   reference that is read off the registered schema rather than from a list kept
   beside it.
 
-### Removed
-
-- **`flush_page_cache`, `rebuild_page_tree` and `rebuild_search_index` no longer
-  ask for a confirmation**, and no longer declare `confirm_token` at all — a
-  caller that still sends one gets a schema error rather than silence.
-
-  They were gated because they are instance-wide and slow, and that is the wrong
-  argument: nothing is lost by any of them. The cost is time, not content, and a
-  dialog in front of an operation that loses nothing is how people learn to tick
-  without reading — which spends exactly the attention `purge_page_history`
-  needs. What each of them does cost is now stated in its description.
-
 ### Changed
+
+- The advertised schemas avoid a spelling that is legal JSON Schema and still
+  gets a tool refused, or its constraint silently dropped, by some MCP clients:
+  an open object now writes `"additionalProperties": true` rather than the
+  empty schema `{}` zod emits for it. What the tools accept and return is
+  unchanged; only the way the schema says so is.
+
+- `update_page`'s stale-read refusal answers `{page_id, written: false,
+conflict: {you_saw, it_is_now}, note}` in addition to its sentence. It is
+  still **not** an error result — an `isError` would make a client surface it
+  as a failure, when what it is is an instruction for recovering.
+
+- A result too large to shrink is now an error rather than an envelope saying
+  so. The envelope was a different shape from what the tool declares it
+  returns, which the SDK refuses.
+
+- The two-call `confirm_token` prompt is an error result. What was asked for did
+  not happen, which is what `isError` says. The text is unchanged and still
+  carries the token.
+
+- The integration compose file publishes Wiki.js on `WIKIJS_PORT` (default 3010) instead of a hardcoded 3010, so a workstation that already runs
+  something there does not need a patched compose file.
 
 - Runs on **MCP SDK 2.0**. Existing clients see the same protocol revision they
   always did; the change is the package layout behind it, and it is what lets
@@ -125,6 +109,18 @@ conflict: {you_saw, it_is_now}, note}` in addition to its sentence. It is
   that speaks the older era sees no change — it is still pinned to one instance
   for the life of the connection, exactly as a hand-wired
   `StdioServerTransport` served it.
+
+### Removed
+
+- **`flush_page_cache`, `rebuild_page_tree` and `rebuild_search_index` no longer
+  ask for a confirmation**, and no longer declare `confirm_token` at all — a
+  caller that still sends one gets a schema error rather than silence.
+
+  They were gated because they are instance-wide and slow, and that is the wrong
+  argument: nothing is lost by any of them. The cost is time, not content, and a
+  dialog in front of an operation that loses nothing is how people learn to tick
+  without reading — which spends exactly the attention `purge_page_history`
+  needs. What each of them does cost is now stated in its description.
 
 ### Fixed
 

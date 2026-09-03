@@ -1,6 +1,6 @@
 {
   "name": "@ni-c/wikijs-mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "mcpName": "io.github.ni-c/wikijs-mcp",
   "description": "MCP server for Wiki.js: search, read and edit pages, and manage assets, users, groups and comments",
   "keywords": [
