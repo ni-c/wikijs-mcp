@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The advertised schemas avoid a spelling that is legal JSON Schema and still
+  gets a tool refused, or its constraint silently dropped, by some MCP clients:
+  an open object now writes `"additionalProperties": true` rather than the
+  empty schema `{}` zod emits for it. What the tools accept and return is
+  unchanged; only the way the schema says so is.
+
 - `update_page`'s stale-read refusal answers `{page_id, written: false,
 conflict: {you_saw, it_is_now}, note}` in addition to its sentence. It is
   still **not** an error result — an `isError` would make a client surface it
