@@ -1,12 +1,19 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
-import { fingerprint, identifier } from '../confirm.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
+import { fingerprint, identifier, label } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -47,7 +54,7 @@ const pageRuleParam = z
 
 export function registerGroupTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, approval, confirmations, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_groups',
@@ -57,11 +64,12 @@ export function registerGroupTools(
         'Lists the wiki’s groups with how many users each has. Groups marked ' +
         'isSystem are Wiki.js’ own Administrators and Guests — they exist ' +
         'always and should not be deleted.',
-      inputSchema: {
+      inputSchema: z.object({
         filter: z.string().trim().max(255).optional(),
         order_by: z.enum(['id', 'name', 'createdAt', 'updatedAt']).optional(),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ filter, order_by }) =>
       run(async () => {
@@ -88,8 +96,9 @@ export function registerGroupTools(
         'members. This is the authoritative answer to "who can see or edit ' +
         'what" — and it is what update_group needs as its starting point, ' +
         'because that mutation replaces the whole rule set.',
-      inputSchema: { group_id: idParam },
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ group_id: idParam }),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ group_id }) =>
       run(async () => {
@@ -113,10 +122,11 @@ export function registerGroupTools(
       description:
         'Creates an empty group. It starts with no permissions and no page ' +
         'rules, so it grants nothing until update_group is called.',
-      inputSchema: {
+      inputSchema: z.object({
         name: z.string().trim().min(1).max(255).describe('Group name.'),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ name }) =>
       run(async () => {
@@ -136,12 +146,13 @@ export function registerGroupTools(
     {
       title: 'Update a group’s permissions',
       description:
-        'Replaces a group’s name, permissions and page rules wholesale — this ' +
-        'is not a partial update, and omitting a rule deletes it. Read the ' +
+        'Replaces a group’s name, permissions, page rules and login redirect ' +
+        'wholesale — this is not a partial update, and omitting a rule deletes ' +
+        'it, just as omitting redirect_on_login resets it to "/". Read the ' +
         'group with get_group first and send back the full set with your ' +
         'change applied. Requires a confirmation token, because this is the ' +
         'call that decides who can read and edit the wiki.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         name: z.string().trim().min(1).max(255),
         permissions: z
@@ -161,41 +172,61 @@ export function registerGroupTools(
           .optional()
           .describe('Where members land after signing in (default "/").'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: true },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({
-      group_id,
-      name,
-      permissions,
-      page_rules,
-      redirect_on_login,
-      confirm_token,
-    }) =>
+    async (
+      {
+        group_id,
+        name,
+        permissions,
+        page_rules,
+        redirect_on_login,
+        confirm_token,
+      },
+      mcp
+    ) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_group',
-            // The content, not the count. Binding `permissions.length` would
-            // give ["read:pages"] and ["manage:system"] the same key, so a
-            // confirmation for a harmless narrowing would execute a handover of
-            // the whole instance.
+            // Every argument the mutation sends, not just the ones that read as
+            // dangerous. The content, not the count: binding
+            // `permissions.length` would give ["read:pages"] and
+            // ["manage:system"] the same key, so a confirmation for a harmless
+            // narrowing would execute a handover of the whole instance. And the
+            // name and the redirect for the same reason one step further out —
+            // this mutation replaces them too, so a token issued for a rule
+            // change would otherwise also rename "Interns" to "Administrators"
+            // (which is what every admin view and every later list_groups then
+            // reports) and repoint where members land after signing in.
             targets: [
               `group:${group_id}`,
+              `name:${fingerprint(name)}`,
               `permissions:${fingerprint([...permissions].sort())}`,
               `rules:${fingerprint(page_rules)}`,
+              `redirect:${fingerprint(redirect_on_login ?? '/')}`,
             ],
             what:
-              `replace the permissions of group ${group_id} with ` +
+              `rename group ${group_id} to "${label(name, 'group name')}", ` +
+              'replace its permissions with ' +
               // Permission names are server vocabulary (read:pages,
               // manage:system), never anything the wiki's users wrote, so they
               // are safe to name — and naming them is the point: a model
               // approving "1 permission" cannot see which one.
-              `${permissions.map((p) => identifier(p, 'permission')).join(', ') || 'none'} ` +
-              `and ${page_rules.length} page rule(s)`,
+              `${permissions.map((p) => identifier(p, 'permission')).join(', ') || 'none'}, ` +
+              `set ${page_rules.length} page rule(s) and send members to ` +
+              `${identifier(redirect_on_login ?? '/', 'login redirect')} after they sign in`,
             consequence:
-              'This decides what every member of the group can read and edit; omitted rules are deleted.',
+              'This decides what every member of the group can read and edit; ' +
+              'omitted rules are deleted. The name is what every administration ' +
+              'view shows, and the redirect is where Wiki.js sends a member once ' +
+              'they have authenticated.',
             confirmToken: confirm_token,
           },
           async () => {
@@ -210,7 +241,10 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').update,
               'update_group'
             );
-            return textResult(`Updated group ${group_id}.`);
+            return sentenceResult(`Updated group ${group_id}.`, {
+              group_id,
+              updated: true,
+            });
           }
         )
       )
@@ -223,15 +257,19 @@ export function registerGroupTools(
       description:
         'Removes a group. Its members keep their accounts but lose whatever ' +
         'access the group gave them. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ group_id, confirm_token }) =>
+    async ({ group_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_group',
@@ -249,7 +287,9 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').delete,
               'delete_group'
             );
-            return textResult(`Deleted group ${group_id}.`);
+            return sentenceResult(`Deleted group ${group_id}.`, {
+              deleted_group_id: group_id,
+            });
           }
         )
       )
@@ -263,16 +303,20 @@ export function registerGroupTools(
         'Adds one account to one group, leaving its other memberships alone — ' +
         'the additive counterpart to update_user’s groups list. Requires a ' +
         'confirmation token, because a group is what grants access.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ group_id, user_id, confirm_token }) =>
+    async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'assign_user_to_group',
@@ -292,7 +336,14 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').assignUser,
               'assign_user_to_group'
             );
-            return textResult(`Added user ${user_id} to group ${group_id}.`);
+            return sentenceResult(
+              `Added user ${user_id} to group ${group_id}.`,
+              {
+                user_id,
+                group_id,
+                assigned: true,
+              }
+            );
           }
         )
       )
@@ -306,16 +357,20 @@ export function registerGroupTools(
         'Takes one account out of one group. Requires a confirmation token — ' +
         'removing somebody from their only group leaves them able to sign in ' +
         'and see nothing.',
-      inputSchema: {
+      inputSchema: z.object({
         group_id: idParam,
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ group_id, user_id, confirm_token }) =>
+    async ({ group_id, user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'unassign_user_from_group',
@@ -335,8 +390,9 @@ export function registerGroupTools(
               objectOf(data.groups, 'the group mutation').unassignUser,
               'unassign_user_from_group'
             );
-            return textResult(
-              `Removed user ${user_id} from group ${group_id}.`
+            return sentenceResult(
+              `Removed user ${user_id} from group ${group_id}.`,
+              { user_id, group_id, assigned: false }
             );
           }
         )

@@ -24,6 +24,14 @@ export interface Config {
   insecureTls: boolean;
   readOnly: boolean;
   /**
+   * Whether a client that *can* show a dialog is asked before a guarded tool
+   * acts. `ELICITATION=false` turns the dialog off — the guard stays and falls
+   * back to the two-call token, so there is no setting in which a guarded call
+   * goes unannounced.
+   */
+  elicitation: boolean;
+
+  /**
    * Raw value of `WIKIJS_ALLOWED_PATHS` — comma-separated page path prefixes
    * that the write tools are confined to. Kept unparsed for the same reason as
    * the tool lists: this file mirrors the environment, `buildPathScope`
@@ -65,6 +73,30 @@ export function missingConfigKeys(config: Config): string[] {
 }
 
 /**
+ * Reads `ELICITATION` — deliberately unprefixed, and deliberately fatal on
+ * anything it does not recognise.
+ *
+ * Unprefixed: environment variables are process-wide, so this is one switch for
+ * every server in the same environment. That is also its risk, which is why a
+ * server started with it off says so on its startup line.
+ *
+ * Fatal: this is the first variable of the family that defaults to *on*. The
+ * others fail open on a typo, which is the safe direction for them. Here a typo
+ * would leave the dialog running while the operator believes it is off — and an
+ * operator who believes that has no way to find out.
+ */
+export function parseElicitation(raw: string | undefined): boolean {
+  const value = raw?.trim().toLowerCase();
+  if (value === undefined || value === '' || value === 'true') return true;
+  if (value === 'false') return false;
+  console.error(
+    `wikijs-mcp: ELICITATION must be "true" or "false" — got "${raw}". ` +
+      'Refusing to start rather than guess.'
+  );
+  process.exit(1);
+}
+
+/**
  * Reads the configuration from environment variables.
  *
  * Missing credentials are only a warning, not a fatal error: the server must be
@@ -80,8 +112,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // because that is what the neighbouring servers use.
   const token = env.WIKIJS_TOKEN ?? env.WIKIJS_API_KEY;
   const locale = env.WIKIJS_LOCALE?.trim() || DEFAULT_LOCALE;
+  // The two switches are parsed differently on purpose, and the difference is
+  // which way a typo should fall. WIKIJS_INSECURE_TLS *removes* a protection,
+  // so only the exact word turns it on and `WIKIJS_INSECURE_TLS=yes` keeps
+  // certificates verified. WIKIJS_READ_ONLY *adds* one, so anything an operator
+  // plausibly meant by "on" is honoured — `1` from a shell script, `yes` from a
+  // compose file, `TRUE` from a Windows environment — because the alternative
+  // is a server that quietly registered its write tools while its operator
+  // believes it did not.
   const insecureTls = env.WIKIJS_INSECURE_TLS === 'true';
-  const readOnly = env.WIKIJS_READ_ONLY === 'true';
+  const readOnly = /^(1|true|yes)$/i.test(env.WIKIJS_READ_ONLY?.trim() ?? '');
   const allowedPaths = env.WIKIJS_ALLOWED_PATHS;
   const allowTools = env.WIKIJS_ALLOW_TOOLS;
   const denyTools = env.WIKIJS_DENY_TOOLS;
@@ -91,6 +131,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // return, so the branch that is taken cannot decide whether it happens.
   delete env.WIKIJS_TOKEN;
   delete env.WIKIJS_API_KEY;
+
+  // After the deletes, deliberately: this one can exit the process, and an exit
+  // above would leave the token in the environment for whatever runs next.
+  const elicitation = parseElicitation(env.ELICITATION);
 
   const missing = [!url && 'WIKIJS_URL', !token && 'WIKIJS_TOKEN'].filter(
     (v): v is string => Boolean(v)
@@ -106,6 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     locale,
     insecureTls,
     readOnly,
+    elicitation,
     allowedPaths,
     allowTools,
     denyTools,
@@ -151,10 +196,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 
 function isLoopbackHost(hostname: string): boolean {
+  // URL.hostname keeps the brackets around an IPv6 literal, may carry a %zone
+  // suffix, and 'localhost.' with its root label is the same name as
+  // 'localhost'. The comparison this replaced saw none of them — which is why
+  // its bare '::1' branch could never match a hostname taken from a URL.
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|]$/g, '')
+    .replace(/%.*$/, '')
+    .replace(/\.+$/, '');
   return (
-    hostname === 'localhost' ||
-    hostname.endsWith('.localhost') ||
-    hostname.startsWith('127.') ||
-    hostname === '::1'
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.startsWith('127.') ||
+    host === '::1' ||
+    // Every dual-stack client dials ::ffff:127.0.0.1 as plain 127.0.0.1, and
+    // URL normalises the mapped form to hex (::ffff:7f00:1).
+    /^::ffff:(?:7f[0-9a-f]{0,2}:|127\.)/.test(host)
   );
 }

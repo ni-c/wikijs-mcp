@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WikiJsApi } from '../src/api.js';
 import { ALL_TOOLS, WRITE_TOOLS } from '../src/tools/catalogue.js';
 import { connect, stubFetch, testConfig, type Routes } from './harness.js';
+import { expectPortableToolSchemas } from 'mcp-integration-harness';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -168,6 +169,141 @@ describe('write tools under read-only', () => {
     for (const tool of tools) {
       if (!/^(delete_|purge_|revoke_|migrate_)/.test(tool.name)) continue;
       expect(tool.annotations?.destructiveHint).toBe(true);
+    }
+    await close();
+  });
+
+  it('declares an output schema on every tool', async () => {
+    // The same argument as the annotations below, one field along. A tool that
+    // says nothing about its result forces a client to parse prose to find out
+    // what it got, and the SDK sends no `structuredContent` at all for a tool
+    // that declared no schema — twenty-nine tools here answered with a
+    // sentence.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+    for (const tool of tools) {
+      expect(tool.outputSchema, tool.name).toBeDefined();
+      // An object root, not merely a schema. SEP-2106 allows an array or a
+      // scalar, but a 2025-era client is served that same tool with the schema
+      // rewritten to `{result: …}` — so it would answer in two shapes
+      // depending on who asked.
+      expect(tool.outputSchema?.type, tool.name).toBe('object');
+    }
+    await close();
+  });
+
+  it('advertises schemas every client can read', async () => {
+    // Legal JSON Schema is not enough. `{}` in a schema position — what zod
+    // writes for `looseObject`, `catchall` and `z.unknown()` — and `type` as an
+    // array are both refused, or silently dropped, by some clients. Neither is
+    // a contract: each has an equivalent spelling that says the same thing, so
+    // there is nothing here to excuse.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    expectPortableToolSchemas(tools);
+    await close();
+  });
+
+  it('says in the schema which results carry wiki content', async () => {
+    // Page text, titles, descriptions and comments are written by anyone with
+    // edit rights. A client that reads only `structuredContent` must not get
+    // them unframed — and the marker is a field it can check rather than a
+    // preamble it has to notice.
+    //
+    // The list follows the call sites: a tool marked here is one that already
+    // routed its answer through the untrusted wrapper.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const marked = tools.filter((tool) => {
+      const properties = tool.outputSchema?.properties as
+        Record<string, unknown> | undefined;
+      return properties?.untrusted !== undefined;
+    });
+    expect(marked.length).toBeGreaterThan(0);
+    // And every tool that does *not* carry it answers with this server's own
+    // words: an id it was given, or a fact it established.
+    for (const tool of marked) {
+      const properties = tool.outputSchema?.properties as Record<
+        string,
+        { const?: unknown }
+      >;
+      expect(properties.source?.const, tool.name).toBe('wikijs');
+    }
+    await close();
+  });
+
+  it('declares all four annotation hints on every tool', async () => {
+    // Not a style rule. Two of the four default to a *stronger* claim than
+    // silence suggests: the specification gives destructiveHint and
+    // openWorldHint a default of true, so a tool that omits them announces
+    // itself as destructive and open-world. Twenty-two write tools here said
+    // only idempotentHint and inherited the rest.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const hints = [
+      'readOnlyHint',
+      'destructiveHint',
+      'idempotentHint',
+      'openWorldHint',
+    ] as const;
+    for (const tool of tools) {
+      for (const hint of hints) {
+        expect(typeof tool.annotations?.[hint], `${tool.name}.${hint}`).toBe(
+          'boolean'
+        );
+      }
+    }
+    await close();
+  });
+
+  it('lets page history decide what counts as destructive', async () => {
+    // The distinction a wiki makes and a bookmark manager cannot. Wiki.js
+    // keeps every page version, so editing a page is recoverable and
+    // update_page is not destructive. Comments have no history at all, so
+    // update_comment is. Same verb, opposite answers, decided by what the
+    // store remembers rather than by the shape of the call.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    expect(byName.get('update_page')?.destructiveHint).toBe(false);
+    expect(byName.get('update_comment')?.destructiveHint).toBe(true);
+    await close();
+  });
+
+  it('does not warn about rebuilding something derived', async () => {
+    // These four recompute a cache, a tree, an index or a rendering. They
+    // lose nothing by construction — which is also why they stop asking for
+    // a confirmation.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    for (const name of [
+      'flush_page_cache',
+      'rebuild_page_tree',
+      'rebuild_search_index',
+      'render_page',
+    ]) {
+      expect(byName.get(name)?.destructiveHint, name).toBe(false);
+      expect(byName.get(name)?.idempotentHint, name).toBe(true);
+    }
+    await close();
+  });
+
+  it('warns where a wholesale replacement leaves no trace', async () => {
+    // update_group replaces a permission set, update_user a group list,
+    // update_tag a name on every page carrying it, reset_user_password a
+    // credential the person chose. None of those has a history to go back to.
+    const { client, close } = await connect();
+    const { tools } = await client.listTools();
+    const byName = new Map(tools.map((t) => [t.name, t.annotations]));
+    for (const name of [
+      'update_group',
+      'update_user',
+      'update_tag',
+      'reset_user_password',
+    ]) {
+      expect(byName.get(name)?.destructiveHint, name).toBe(true);
     }
     await close();
   });

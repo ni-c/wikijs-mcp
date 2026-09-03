@@ -44,7 +44,7 @@
 
   <rect class="node-accent" x="280" y="60" width="170" height="100" rx="10" />
   <text class="label-title" x="365" y="95" text-anchor="middle">wikijs-mcp</text>
-  <text class="label-muted" x="365" y="115" text-anchor="middle">62 tools · confirm tokens</text>
+  <text class="label-muted" x="365" y="115" text-anchor="middle">62 tools · asks a person</text>
   <text class="label-muted" x="365" y="133" text-anchor="middle">read-only · path scope</text>
 
   <rect class="node" x="550" y="70" width="150" height="80" rx="10" />

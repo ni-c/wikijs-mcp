@@ -1,18 +1,25 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
-import { assertSucceeded } from '../api.js';
-import { fingerprint } from '../confirm.js';
-import * as gql from '../gql/admin.js';
-import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { plain } from '../output-schema.js';
 import {
   confirmTokenParam,
   emailParam,
   idParam,
   limitParam,
 } from '../schema.js';
+
+import { assertSucceeded } from '../api.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
+import { fingerprint, identifier } from '../resource-key.js';
+import * as gql from '../gql/admin.js';
+import { guarded } from '../guard.js';
+import { listOf, objectOf } from '../normalize.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -26,7 +33,7 @@ import type { ToolContext } from './context.js';
  */
 export function registerUserTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, approval, confirmations, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_users',
@@ -36,7 +43,7 @@ export function registerUserTools(
         'Lists the wiki’s user accounts. `providerKey` says how they log in — ' +
         '"local" for a Wiki.js password, anything else for an identity ' +
         'provider. Email addresses are returned because they are the login.',
-      inputSchema: {
+      inputSchema: z.object({
         filter: z
           .string()
           .trim()
@@ -47,8 +54,9 @@ export function registerUserTools(
           .enum(['id', 'email', 'name', 'createdAt', 'updatedAt'])
           .optional(),
         limit: limitParam.optional(),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ filter, order_by, limit }) =>
       run(async () => {
@@ -74,15 +82,16 @@ export function registerUserTools(
       description:
         'Finds users by name or email. Use it to resolve a person to the id ' +
         'that list_pages (creator_id, author_id) and the group tools take.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z
           .string()
           .trim()
           .min(1)
           .max(255)
           .describe('Name or email fragment.'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ query }) =>
       run(async () => {
@@ -105,8 +114,9 @@ export function registerUserTools(
         'Full detail for one account, including its group memberships and ' +
         'whether two-factor authentication is active. No credential of any kind ' +
         'is returned — Wiki.js does not expose one.',
-      inputSchema: { user_id: idParam },
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ user_id: idParam }),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ user_id }) =>
       run(async () => {
@@ -132,7 +142,7 @@ export function registerUserTools(
         'send_welcome_email so Wiki.js mails an invitation instead. Groups are ' +
         'given by id — list_groups has them, and an account in no group can log ' +
         'in but see nothing.',
-      inputSchema: {
+      inputSchema: z.object({
         email: emailParam,
         name: z.string().trim().min(1).max(255).describe('Display name.'),
         password: z
@@ -157,33 +167,59 @@ export function registerUserTools(
         must_change_password: z.boolean().optional(),
         send_welcome_email: z.boolean().optional(),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
-    async ({
-      email,
-      name,
-      password,
-      provider_key,
-      groups,
-      must_change_password,
-      send_welcome_email,
-      confirm_token,
-    }) =>
+    async (
+      {
+        email,
+        name,
+        password,
+        provider_key,
+        groups,
+        must_change_password,
+        send_welcome_email,
+        confirm_token,
+      },
+      mcp
+    ) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'create_user',
-            // The group list is part of the target: a confirmation for an
-            // account in no group must not create one in the administrators.
+            // Every argument, not only the ones that read as dangerous. The
+            // group list because a confirmation for an account in no group must
+            // not create one in the administrators; the password because a
+            // token issued for an invitation must not create an account with a
+            // credential the caller chose; and `provider_key` because it decides
+            // whether the password is even used or the account is claimed
+            // through an identity provider instead.
             targets: [
               `email:${email}`,
+              `name:${fingerprint(name)}`,
+              `password:${fingerprint(password ?? '')}`,
+              `provider:${provider_key ?? 'local'}`,
+              `mustchange:${String(must_change_password ?? false)}`,
+              `welcome:${String(send_welcome_email ?? false)}`,
               ...(groups ?? []).map((id) => `group:${id}`),
             ],
-            what: `create a wiki account in ${(groups ?? []).length} group(s)`,
+            what:
+              `create a wiki account for ${identifier(email, 'email address')} ` +
+              `in ${(groups ?? []).length} group(s), signing in through ` +
+              `${identifier(provider_key ?? 'local', 'authentication provider')}` +
+              (password === undefined
+                ? ''
+                : ', with a password chosen by the caller'),
             consequence:
-              'The account can sign in to the wiki with whatever its groups allow.',
+              'The account can sign in to the wiki with whatever its groups allow.' +
+              (send_welcome_email === true
+                ? ' Wiki.js emails the address an invitation.'
+                : ''),
             confirmToken: confirm_token,
           },
           async () => {
@@ -233,7 +269,7 @@ export function registerUserTools(
         'Changes an account’s details or its group membership. The groups list ' +
         'replaces the existing one rather than adding to it — use ' +
         'assign_user_to_group for a single addition.',
-      inputSchema: {
+      inputSchema: z.object({
         user_id: idParam,
         email: emailParam.optional(),
         name: z.string().trim().min(1).max(255).optional(),
@@ -245,20 +281,19 @@ export function registerUserTools(
         location: z.string().trim().max(255).optional(),
         job_title: z.string().trim().max(255).optional(),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: true },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({
-      user_id,
-      email,
-      name,
-      groups,
-      location,
-      job_title,
-      confirm_token,
-    }) =>
+    async (
+      { user_id, email, name, groups, location, job_title, confirm_token },
+      mcp
+    ) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_user',
@@ -318,7 +353,10 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').update,
               'update_user'
             );
-            return textResult(`Updated user ${user_id}.`);
+            return sentenceResult(`Updated user ${user_id}.`, {
+              user_id,
+              updated: true,
+            });
           }
         )
       )
@@ -332,18 +370,22 @@ export function registerUserTools(
         'Removes an account. Wiki.js needs somebody to inherit the pages it ' +
         'authored, so replace_with_user_id is required — pass the id of the ' +
         'account that should own them afterwards. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         user_id: idParam,
         replace_with_user_id: idParam.describe(
           'Account that inherits the deleted user’s pages.'
         ),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ user_id, replace_with_user_id, confirm_token }) =>
+    async ({ user_id, replace_with_user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_user',
@@ -368,7 +410,9 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').delete,
               'delete_user'
             );
-            return textResult(`Deleted user ${user_id}.`);
+            return sentenceResult(`Deleted user ${user_id}.`, {
+              deleted_user_id: user_id,
+            });
           }
         )
       )
@@ -382,18 +426,22 @@ export function registerUserTools(
         'Switches an account on or off. A deactivated account keeps its pages ' +
         'and groups but cannot sign in — the reversible alternative to ' +
         'delete_user. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         user_id: idParam,
         active: z.boolean().describe('True to activate, false to deactivate.'),
         confirm_token: confirmTokenParam.optional(),
-      },
+      }),
       // Not idempotent although the end state is: the confirmation token is
       // single-use, so the second identical call needs a fresh one.
-      annotations: { idempotentHint: false },
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ user_id, active, confirm_token }) =>
+    async ({ user_id, active, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'set_user_active',
@@ -415,8 +463,9 @@ export function registerUserTools(
               active ? mutation.activate : mutation.deactivate,
               'set_user_active'
             );
-            return textResult(
-              `User ${user_id} is now ${active ? 'active' : 'deactivated'}.`
+            return sentenceResult(
+              `User ${user_id} is now ${active ? 'active' : 'deactivated'}.`,
+              { user_id, active }
             );
           }
         )
@@ -430,15 +479,19 @@ export function registerUserTools(
       description:
         'Marks an account’s email as verified, which is otherwise done by the ' +
         'user clicking a link. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ user_id, confirm_token }) =>
+    async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'verify_user',
@@ -456,7 +509,10 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').verify,
               'verify_user'
             );
-            return textResult(`User ${user_id} is verified.`);
+            return sentenceResult(`User ${user_id} is verified.`, {
+              user_id,
+              verified: true,
+            });
           }
         )
       )
@@ -470,18 +526,22 @@ export function registerUserTools(
         'Switches an account’s second factor. Turning it OFF weakens that ' +
         'account and is the reason this is gated; turning it on forces the user ' +
         'to enrol at their next sign-in. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         user_id: idParam,
         enabled: z
           .boolean()
           .describe('True to require 2FA, false to remove it.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ user_id, enabled, confirm_token }) =>
+    async ({ user_id, enabled, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'set_user_tfa',
@@ -503,8 +563,9 @@ export function registerUserTools(
               enabled ? mutation.enableTFA : mutation.disableTFA,
               'set_user_tfa'
             );
-            return textResult(
-              `Two-factor authentication is now ${enabled ? 'required' : 'off'} for user ${user_id}.`
+            return sentenceResult(
+              `Two-factor authentication is now ${enabled ? 'required' : 'off'} for user ${user_id}.`,
+              { user_id, tfa_required: enabled }
             );
           }
         )
@@ -519,15 +580,19 @@ export function registerUserTools(
         'Starts Wiki.js’ own password reset for a local account, which emails ' +
         'the user a link. No password is chosen or returned here. Requires a ' +
         'confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         user_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ user_id, confirm_token }) =>
+    async ({ user_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'reset_user_password',
@@ -547,7 +612,13 @@ export function registerUserTools(
               objectOf(data.users, 'the user mutation').resetPassword,
               'reset_user_password'
             );
-            return textResult(`Password reset started for user ${user_id}.`);
+            return sentenceResult(
+              `Password reset started for user ${user_id}.`,
+              {
+                user_id,
+                reset_started: true,
+              }
+            );
           }
         )
       )

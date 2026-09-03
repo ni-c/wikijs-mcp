@@ -16,9 +16,25 @@ below — see [choosing the tools that load](/guide/configuration#choosing-the-t
 
 Every tool that addresses a page takes either `page_id` or `path` plus
 `locale` — the locale is part of a page's identity and defaults to
-`WIKIJS_LOCALE`. A tool with a `confirm_token` parameter is two-step: the
-first call returns a short-lived token bound to the exact target, and only
-a second call carrying that token performs the operation.
+`WIKIJS_LOCALE`.
+
+👤 marks a tool that **asks a person** before it acts, through MCP
+elicitation — a dialog the model cannot answer on its behalf. Where the
+client cannot show one it falls back to a two-call `confirm_token` bound to
+the exact target, and says which of the two it was. `ELICITATION=false`
+takes that fallback deliberately; it never removes the guard. See
+[Asking a person](/guide/approval).
+
+Every tool declares all four MCP annotations — `readOnlyHint`,
+`destructiveHint`, `idempotentHint`, `openWorldHint`. `update_page` is
+deliberately **not** destructive: Wiki.js keeps page history, which is what
+separates it from the same verb in servers that do not.
+
+Every tool declares an `outputSchema` and answers with `structuredContent` beside
+the text block, so a client can use a result without parsing prose. The tools
+that report wiki content carry `untrusted: true` and `source: "wikijs"` as fields
+of that object — page text, titles, descriptions and comments are written by
+anyone with edit rights.
 
 ## Read tools
 
@@ -180,7 +196,7 @@ Lists the images and files in one asset folder. Folder 0 is the root. Assets are
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `folder_id` | unknown | no | Folder id from list_asset_folders. 0 (default) is the root. |
+| `folder_id` | integer,number | no | Folder id from list_asset_folders. 0 (default) is the root. |
 | `kind` | `"ALL"` \| `"IMAGE"` \| `"BINARY"` | no | Restrict to images or to non-image files. |
 
 ### `list_asset_folders`
@@ -191,7 +207,7 @@ Lists the folders directly under an asset folder. Folder 0 is the root. Wiki.js 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `parent_folder_id` | unknown | no | Parent folder id. 0 (default) is the root. |
+| `parent_folder_id` | integer,number | no | Parent folder id. 0 (default) is the root. |
 
 ### `list_comments`
 
@@ -341,7 +357,7 @@ Creates a page. The path must not already exist in this locale — Wiki.js answe
 
 **Update a page** — write, **essential**
 
-Changes a page. Pass content to replace the whole body, or edits for surgical find-and-replace — each edit’s old_text must appear exactly once, and an ambiguous or missing match is refused rather than applied to the wrong place. Before writing, this checks whether somebody else changed the page since it was read and refuses to clobber them; pass force=true to overwrite deliberately. Metadata fields can be changed on their own, without touching the text.
+Changes a page. Pass content to replace the whole body, or edits for surgical find-and-replace — each edit’s old_text must appear exactly once, and an ambiguous or missing match is refused rather than applied to the wrong place. Before writing, this checks whether somebody else changed the page since it was read and refuses to clobber them; pass force=true to overwrite deliberately. Metadata fields can be changed on their own, without touching the text. That refusal is a normal result and not an error: it explains what to do — read the page again with get_page, redo the change on top of what is now there, and write. Note that render_page also bumps the page’s timestamp, so calling it between your read and your write triggers the same refusal even though nobody else touched anything.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -359,7 +375,7 @@ Changes a page. Pass content to replace the whole body, or edits for surgical fi
 | `expected_updated_at` | string | no | The updatedAt value you saw when you read this page. Normally unnecessary — a previous get_page in this session is remembered automatically — but it makes the concurrent-edit check work without one. |
 | `force` | boolean | no | Write even though the page changed since you read it. Overwrites the other person’s edit. |
 
-### `move_page`
+### `move_page` 👤
 
 **Move or rename a page** — write
 
@@ -374,7 +390,7 @@ Moves a page to another path, another locale, or both. Internal links pointing a
 | `destination_locale` | string | no | Locale code. Defaults to WIKIJS_LOCALE. The locale is part of a page’s identity. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `delete_page`
+### `delete_page` 👤
 
 **Delete a page** — write, destructive
 
@@ -387,7 +403,7 @@ Deletes a page and its history. Wiki.js has no trash — this cannot be undone f
 | `locale` | string | no | Locale code. Defaults to WIKIJS_LOCALE. The locale is part of a page’s identity. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `convert_page_editor`
+### `convert_page_editor` 👤
 
 **Convert a page to another editor** — write
 
@@ -401,7 +417,7 @@ Changes the storage format of a page. Wiki.js does not translate the body — co
 | `editor` | `"markdown"` \| `"ckeditor"` \| `"code"` \| `"asciidoc"` | yes | Storage format. "markdown" for markdown source, "ckeditor" for rich-text HTML, "code" for raw HTML, "asciidoc" for AsciiDoc. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `restore_page_version`
+### `restore_page_version` 👤
 
 **Restore an earlier version** — write, destructive
 
@@ -413,9 +429,9 @@ Rolls a page back to a stored version. The current content is not lost — it be
 | `version_id` | integer | yes | Version id from list_page_history. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `update_tag`
+### `update_tag` 👤
 
-**Rename a tag** — write
+**Rename a tag** — write, destructive
 
 Changes a tag’s name or display title across every page carrying it. Renaming affects all of them at once, which is the point and also the risk, so it needs a confirmation token.
 
@@ -426,7 +442,7 @@ Changes a tag’s name or display title across every page carrying it. Renaming 
 | `title` | string | yes | New display title. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `delete_tag`
+### `delete_tag` 👤
 
 **Delete a tag** — write, destructive
 
@@ -447,7 +463,7 @@ Uploads an image or file to an asset folder, so it can be embedded in a page. Co
 | --- | --- | --- | --- |
 | `filename` | string | yes | File name including its extension, e.g. "diagram.png". |
 | `content_base64` | string | yes | File contents, base64-encoded. |
-| `folder_id` | unknown | no | Target folder id. 0 (default) is the root. |
+| `folder_id` | integer,number | no | Target folder id. 0 (default) is the root. |
 
 ### `create_asset_folder`
 
@@ -457,11 +473,11 @@ Creates a folder in the asset store. The slug is what appears in the URL of ever
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `parent_folder_id` | unknown | no | Parent folder id. 0 (default) is the root. |
+| `parent_folder_id` | integer,number | no | Parent folder id. 0 (default) is the root. |
 | `slug` | string | yes | URL segment for the folder. |
 | `name` | string | no | Display name (defaults to the slug). |
 
-### `rename_asset`
+### `rename_asset` 👤
 
 **Rename a file** — write
 
@@ -473,7 +489,7 @@ Renames an asset. Pages embedding it by its old URL will break — Wiki.js does 
 | `filename` | string | yes | New file name, including extension. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `delete_asset`
+### `delete_asset` 👤
 
 **Delete a file** — write, destructive
 
@@ -496,7 +512,7 @@ Posts a comment on a page, optionally as a reply to another. The comment is attr
 | `content` | string | yes | Comment body, in markdown. |
 | `reply_to` | integer | no | Comment id this replies to. |
 
-### `update_comment`
+### `update_comment` 👤
 
 **Edit a comment** — write, destructive
 
@@ -508,7 +524,7 @@ Replaces the body of a comment. Wiki.js keeps no history for comments, so the pr
 | `content` | string | yes | Comment body, in markdown. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `delete_comment`
+### `delete_comment` 👤
 
 **Delete a comment** — write, destructive
 
@@ -519,7 +535,7 @@ Removes a comment permanently. Replies to it are not removed with it. Requires a
 | `comment_id` | integer | yes | Numeric Wiki.js id. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `create_user`
+### `create_user` 👤
 
 **Create a user** — write
 
@@ -536,9 +552,9 @@ Creates an account. For a local account supply a password, or set send_welcome_e
 | `send_welcome_email` | boolean | no |  |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `update_user`
+### `update_user` 👤
 
-**Update a user** — write
+**Update a user** — write, destructive
 
 Changes an account’s details or its group membership. The groups list replaces the existing one rather than adding to it — use assign_user_to_group for a single addition.
 
@@ -552,7 +568,7 @@ Changes an account’s details or its group membership. The groups list replaces
 | `job_title` | string | no |  |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `delete_user`
+### `delete_user` 👤
 
 **Delete a user** — write, destructive
 
@@ -564,7 +580,7 @@ Removes an account. Wiki.js needs somebody to inherit the pages it authored, so 
 | `replace_with_user_id` | integer | yes | Account that inherits the deleted user’s pages. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `set_user_active`
+### `set_user_active` 👤
 
 **Activate or deactivate a user** — write
 
@@ -576,7 +592,7 @@ Switches an account on or off. A deactivated account keeps its pages and groups 
 | `active` | boolean | yes | True to activate, false to deactivate. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `verify_user`
+### `verify_user` 👤
 
 **Mark a user as verified** — write
 
@@ -587,7 +603,7 @@ Marks an account’s email as verified, which is otherwise done by the user clic
 | `user_id` | integer | yes | Numeric Wiki.js id. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `set_user_tfa`
+### `set_user_tfa` 👤
 
 **Turn two-factor authentication on or off** — write
 
@@ -599,9 +615,9 @@ Switches an account’s second factor. Turning it OFF weakens that account and i
 | `enabled` | boolean | yes | True to require 2FA, false to remove it. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `reset_user_password`
+### `reset_user_password` 👤
 
-**Reset a user’s password** — write
+**Reset a user’s password** — write, destructive
 
 Starts Wiki.js’ own password reset for a local account, which emails the user a link. No password is chosen or returned here. Requires a confirmation token.
 
@@ -620,11 +636,11 @@ Creates an empty group. It starts with no permissions and no page rules, so it g
 | --- | --- | --- | --- |
 | `name` | string | yes | Group name. |
 
-### `update_group`
+### `update_group` 👤
 
-**Update a group’s permissions** — write
+**Update a group’s permissions** — write, destructive
 
-Replaces a group’s name, permissions and page rules wholesale — this is not a partial update, and omitting a rule deletes it. Read the group with get_group first and send back the full set with your change applied. Requires a confirmation token, because this is the call that decides who can read and edit the wiki.
+Replaces a group’s name, permissions, page rules and login redirect wholesale — this is not a partial update, and omitting a rule deletes it, just as omitting redirect_on_login resets it to "/". Read the group with get_group first and send back the full set with your change applied. Requires a confirmation token, because this is the call that decides who can read and edit the wiki.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -635,7 +651,7 @@ Replaces a group’s name, permissions and page rules wholesale — this is not 
 | `redirect_on_login` | string | no | Where members land after signing in (default "/"). |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `delete_group`
+### `delete_group` 👤
 
 **Delete a group** — write, destructive
 
@@ -646,7 +662,7 @@ Removes a group. Its members keep their accounts but lose whatever access the gr
 | `group_id` | integer | yes | Numeric Wiki.js id. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `assign_user_to_group`
+### `assign_user_to_group` 👤
 
 **Add a user to a group** — write
 
@@ -658,7 +674,7 @@ Adds one account to one group, leaving its other memberships alone — the addit
 | `user_id` | integer | yes | Numeric Wiki.js id. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `unassign_user_from_group`
+### `unassign_user_from_group` 👤
 
 **Remove a user from a group** — write, destructive
 
@@ -670,7 +686,7 @@ Takes one account out of one group. Requires a confirmation token — removing s
 | `user_id` | integer | yes | Numeric Wiki.js id. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `revoke_api_key`
+### `revoke_api_key` 👤
 
 **Revoke an API key** — write, destructive
 
@@ -681,7 +697,7 @@ Revokes an API key immediately and for good — Wiki.js has no way to un-revoke 
 | `key_id` | integer | yes | Key id from list_api_keys. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `set_api_state`
+### `set_api_state` 👤
 
 **Turn the API on or off** — write, destructive
 
@@ -696,7 +712,7 @@ Switches Wiki.js’ whole API on or off. Turning it off disables every API key a
 
 **Re-render a page** — write
 
-Forces Wiki.js to regenerate one page’s HTML from its source. The fix for a page whose rendering is stale after a theme or renderer change. Changes no content and cannot lose anything.
+Forces Wiki.js to regenerate one page’s HTML from its source. The fix for a page whose rendering is stale after a theme or renderer change. Changes no content and cannot lose anything. It does, however, bump the page’s updatedAt — and update_page compares that against when you last read the page, to catch somebody else saving in between. So a render between your read and your write makes update_page refuse *your own* next write, saying the page changed after you read it. If that happens, call get_page again and then write; nothing was lost. Better still, render after writing rather than before.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -706,33 +722,27 @@ Forces Wiki.js to regenerate one page’s HTML from its source. The fix for a pa
 
 **Flush the page cache** — write
 
-Drops Wiki.js’ rendered-page cache for the whole wiki. Nothing is lost, but every page has to be rendered again on first access, so a busy instance gets slower for a while. Requires a confirmation token.
+Drops Wiki.js’ rendered-page cache for the whole wiki. Nothing is lost, but every page has to be rendered again on first access, so a busy instance gets slower for a while.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
+Takes no parameters.
 
 ### `rebuild_page_tree`
 
 **Rebuild the page tree** — write
 
-Recomputes the folder structure Wiki.js derives from page paths. The repair for a navigation tree that disagrees with the pages actually present, usually after a bulk import or a database edit. Requires a confirmation token.
+Recomputes the folder structure Wiki.js derives from page paths. The repair for a navigation tree that disagrees with the pages actually present, usually after a bulk import or a database edit. Page content is untouched, but it walks every page and can take minutes.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
+Takes no parameters.
 
 ### `rebuild_search_index`
 
 **Rebuild the search index** — write
 
-Reindexes every page in the active search engine. Required once after switching away from "Database - Basic", because the new engine starts empty and search silently returns nothing until this runs. On the basic engine it does nothing. Requires a confirmation token.
+Reindexes every page in the active search engine. Required once after switching away from "Database - Basic", because the new engine starts empty and search silently returns nothing until this runs. On the basic engine it does nothing. Search results may be incomplete while it runs, and it can take minutes on a large wiki.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
+Takes no parameters.
 
-### `purge_page_history`
+### `purge_page_history` 👤
 
 **Purge old page versions** — write, destructive
 
@@ -743,7 +753,7 @@ Deletes stored page versions older than a cutoff, across the whole wiki. The ver
 | `older_than` | `"P1D"` \| `"P1M"` \| `"P3M"` \| `"P6M"` \| `"P1Y"` \| `"P2Y"` \| `"P3Y"` | yes | ISO-8601 duration cutoff, as Wiki.js’ own admin UI offers: P1D (a day), P1M, P3M, P6M, P1Y, P2Y, P3Y. Versions older than this are deleted. |
 | `confirm_token` | string | no | Token from this tool’s previous, unconfirmed call. Omit it to receive one. |
 
-### `migrate_pages_locale`
+### `migrate_pages_locale` 👤
 
 **Move every page to another locale** — write, destructive
 

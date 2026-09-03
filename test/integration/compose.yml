@@ -1,0 +1,50 @@
+# Throwaway Wiki.js instance for `npm run test:integration`.
+#
+# Not a managed stack: brought up, filled by test/integration/bootstrap.ts,
+# and destroyed with `down -v` afterwards. The suite calls every tool in the
+# catalogue, deletes included, so nothing here may hold data anybody wants.
+#
+# Ports are bound to 127.0.0.1 only. The credentials below are in version
+# control on purpose — an instance reachable from the network with these would
+# be a mistake the binding is there to prevent.
+services:
+  db:
+    # Overridable like every other image in this family. Wiki.js 2.x is the only
+    # thing that decides which Postgres majors are safe here, so the default
+    # stays pinned to what upstream tests against — but the weekly run should be
+    # able to ask about a newer one without editing this file.
+    image: ${POSTGRES_IMAGE:-postgres:15-alpine}
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_USER: wikijs
+      POSTGRES_PASSWORD: sandbox-only-not-a-secret
+    tmpfs:
+      # The database lives for the length of one run. tmpfs rather than a named
+      # volume so a forgotten `down` without `-v` cannot leave state that makes
+      # the next run pass for the wrong reason.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U wikijs -d wiki']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  wiki:
+    # Overridable so the weekly CI run can point at a newer tag and report
+    # drift without changing what the PR gate tests.
+    image: ${WIKIJS_IMAGE:-requarks/wiki:2.5.314}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: wikijs
+      DB_PASS: sandbox-only-not-a-secret
+      DB_NAME: wiki
+    ports:
+      # Overridable because 3010 is a popular port and a workstation that
+      # already runs something there should not need a patched compose file.
+      # Set WIKIJS_PORT; the suite reads the same variable.
+      - '127.0.0.1:${WIKIJS_PORT:-3010}:3000'

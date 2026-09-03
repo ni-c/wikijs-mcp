@@ -1,7 +1,17 @@
+/**
+ * What this repository still has to prove about its tool filter.
+ *
+ * The filter lives in `mcp-tool-allowlist` and is tested there. What only this
+ * repository can assert is the wiring — that the catalogue names exactly the
+ * tools the server registers, that the messages name *these* variables, and
+ * that a filtered tool is really gone rather than merely hidden.
+ */
 import { describe, expect, it, vi } from 'vitest';
 
 import { createServer } from '../src/server.js';
-import { buildToolFilter, ToolFilterError } from '../src/tool-filter.js';
+import { ToolFilterError } from 'mcp-tool-allowlist';
+
+import { toolFilterFor } from '../src/server.js';
 import {
   ALL_TOOLS,
   ESSENTIAL_TOOLS,
@@ -67,20 +77,15 @@ describe('ESSENTIAL_TOOLS', () => {
   });
 });
 
-describe('buildToolFilter', () => {
-  const base = { allowTools: undefined, denyTools: undefined, readOnly: false };
+describe('the filter this server builds', () => {
+  const base = testConfig();
 
   it('is inactive when neither variable is set', () => {
-    expect(buildToolFilter(base).active).toBe(false);
-  });
-
-  it('treats an empty value as unset, not as "allow nothing"', () => {
-    expect(buildToolFilter({ ...base, allowTools: '' }).active).toBe(false);
-    expect(buildToolFilter({ ...base, allowTools: '  , ' }).active).toBe(false);
+    expect(toolFilterFor(base).active).toBe(false);
   });
 
   it('selects exact names, ignoring case and stray whitespace', () => {
-    const filter = buildToolFilter({
+    const filter = toolFilterFor({
       ...base,
       allowTools: ' GET_PAGE , list_pages ',
     });
@@ -88,18 +93,18 @@ describe('buildToolFilter', () => {
   });
 
   it('expands a trailing-star prefix', () => {
-    const filter = buildToolFilter({ ...base, allowTools: 'list_*' });
+    const filter = toolFilterFor({ ...base, allowTools: 'list_*' });
     expect([...filter.selected].every((t) => t.startsWith('list_'))).toBe(true);
     expect(filter.selected.size).toBeGreaterThan(5);
   });
 
   it('expands the essential preset', () => {
-    const filter = buildToolFilter({ ...base, allowTools: 'essential' });
+    const filter = toolFilterFor({ ...base, allowTools: 'essential' });
     expect([...filter.selected].sort()).toEqual([...ESSENTIAL_TOOLS].sort());
   });
 
   it('subtracts the deny list from the allow list', () => {
-    const filter = buildToolFilter({
+    const filter = toolFilterFor({
       ...base,
       allowTools: 'essential',
       denyTools: 'create_page,update_page',
@@ -109,33 +114,33 @@ describe('buildToolFilter', () => {
   });
 
   it('aborts on a name that matches nothing — an absent tool is invisible', () => {
-    expect(() => buildToolFilter({ ...base, allowTools: 'get_pge' })).toThrow(
+    expect(() => toolFilterFor({ ...base, allowTools: 'get_pge' })).toThrow(
       ToolFilterError
     );
-    expect(() => buildToolFilter({ ...base, denyTools: 'nope' })).toThrow(
+    expect(() => toolFilterFor({ ...base, denyTools: 'nope' })).toThrow(
       ToolFilterError
     );
   });
 
   it('aborts on a malformed pattern rather than matching nothing forever', () => {
-    expect(() => buildToolFilter({ ...base, allowTools: '*_page' })).toThrow(
+    expect(() => toolFilterFor({ ...base, allowTools: '*_page' })).toThrow(
       /trailing "\*"/
     );
-    expect(() => buildToolFilter({ ...base, allowTools: 'list_*_x' })).toThrow(
+    expect(() => toolFilterFor({ ...base, allowTools: 'list_*_x' })).toThrow(
       ToolFilterError
     );
   });
 
   it('says a named write tool is suppressed by read-only, not unknown', () => {
     expect(() =>
-      buildToolFilter({ ...base, allowTools: 'delete_page', readOnly: true })
-    ).toThrow(/is a write tool, but WIKIJS_READ_ONLY/);
+      toolFilterFor({ ...base, allowTools: 'delete_page', readOnly: true })
+    ).toThrow(/read-only mode suppresses.*unset WIKIJS_READ_ONLY/s);
   });
 
   it('only warns when a pattern happens to match write tools under read-only', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() =>
-      buildToolFilter({
+      toolFilterFor({
         ...base,
         allowTools: 'delete_*,get_page',
         readOnly: true,
@@ -147,7 +152,7 @@ describe('buildToolFilter', () => {
 
   it('drops preset members suppressed by read-only silently', () => {
     // Nobody typed those names, so they are not a typo to report.
-    const filter = buildToolFilter({
+    const filter = toolFilterFor({
       ...base,
       allowTools: 'essential',
       readOnly: true,
@@ -158,15 +163,15 @@ describe('buildToolFilter', () => {
 
   it('aborts rather than starting with an empty tool list', () => {
     expect(() =>
-      buildToolFilter({
+      toolFilterFor({
         ...base,
         allowTools: 'get_page',
         denyTools: 'get_page',
       })
     ).toThrow(/no tools registered/);
     expect(() =>
-      buildToolFilter({ ...base, allowTools: 'delete_*', readOnly: true })
-    ).toThrow(/only write tools/);
+      toolFilterFor({ ...base, allowTools: 'delete_*', readOnly: true })
+    ).toThrow(/read-only mode suppresses/);
   });
 
   it('throws rather than exiting, so createServer stays testable', () => {
@@ -201,11 +206,25 @@ describe('the filter applied to a real server', () => {
     const { connect } = await import('./harness.js');
     const filtered = await connect(testConfig({ allowTools: 'get_page' }));
     const readOnly = await connect(testConfig({ readOnly: true }));
-    const a = await filtered.call('delete_page', { page_id: 1 });
-    const b = await readOnly.call('delete_page', { page_id: 1 });
-    expect(a.isError).toBe(true);
+    // SDK v2 answers a call to an unknown tool with a JSON-RPC error rather
+    // than a result carrying isError, so both calls reject. The equivalence is
+    // what this test is about and is unaffected.
+    const refusal = (harness: {
+      // `Record<string, unknown>` rather than `object`: `call` is declared as a
+      // property on `Connected`, so its parameter is checked contravariantly
+      // and the wider `object` does not accept the narrower argument type.
+      call: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+    }) =>
+      harness.call('delete_page', { page_id: 1 }).then(
+        () => {
+          throw new Error('delete_page answered instead of being refused');
+        },
+        (error: Error) => error.message
+      );
+    const a = await refusal(filtered);
+    const b = await refusal(readOnly);
     expect(a).toEqual(b);
-    expect(JSON.stringify(a)).toMatch(/not found/i);
+    expect(a).toMatch(/not found/i);
     await filtered.close();
     await readOnly.close();
   });

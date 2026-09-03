@@ -1,19 +1,12 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
-import { assertSucceeded } from '../api.js';
-import { fingerprint } from '../confirm.js';
-import * as gql from '../gql/admin.js';
-import * as pageGql from '../gql/pages.js';
-import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
-import { assertWithinScope, PathScopeError } from '../paths.js';
+import { marked, plain } from '../output-schema.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
   jsonResult,
   run,
-  textResult,
+  sentenceResult,
 } from '../result.js';
 import {
   confirmTokenParam,
@@ -21,6 +14,15 @@ import {
   localeParam,
   pagePathParam,
 } from '../schema.js';
+
+import { assertSucceeded } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY, WRITE } from './annotations.js';
+import { fingerprint } from '../resource-key.js';
+import * as gql from '../gql/admin.js';
+import * as pageGql from '../gql/pages.js';
+import { guarded } from '../guard.js';
+import { listOf, objectOf } from '../normalize.js';
+import { assertWithinScope, PathScopeError } from '../paths.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -54,7 +56,7 @@ const commentBodyParam = z
 
 export function registerCommentTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_comments',
@@ -65,11 +67,12 @@ export function registerCommentTools(
         'by page id, which is the one place Wiki.js asks for the path instead. ' +
         'An empty list can also mean comments are switched off for the wiki; ' +
         'get_site_info reports that.',
-      inputSchema: {
+      inputSchema: z.object({
         path: pagePathParam,
         locale: localeParam.optional(),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ path, locale }) =>
       run(async () => {
@@ -94,8 +97,9 @@ export function registerCommentTools(
       title: 'Get one comment',
       description:
         'Returns a single comment by id, with its source and its rendered HTML.',
-      inputSchema: { comment_id: idParam },
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ comment_id: idParam }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ comment_id }) =>
       run(async () => {
@@ -121,12 +125,13 @@ export function registerCommentTools(
         'comment is attributed to the account the API key belongs to, which is ' +
         'usually a service account rather than a person — say so in the text if ' +
         'that matters.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.describe('Page id the comment belongs to.'),
         content: commentBodyParam,
         reply_to: idParam.optional().describe('Comment id this replies to.'),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ page_id, content, reply_to }) =>
       run(async () => {
@@ -169,17 +174,21 @@ export function registerCommentTools(
       description:
         'Replaces the body of a comment. Wiki.js keeps no history for ' +
         'comments, so the previous text is gone.',
-      inputSchema: {
+      inputSchema: z.object({
         comment_id: idParam,
         content: commentBodyParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ comment_id, content, confirm_token }) =>
+    async ({ comment_id, content, confirm_token }, mcp) =>
       run(async () => {
         assertCommentScopable(scope, 'update_comment');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'update_comment',
@@ -204,7 +213,10 @@ export function registerCommentTools(
               objectOf(data.comments, 'the comment mutation').update,
               'update_comment'
             );
-            return textResult(`Updated comment ${comment_id}.`);
+            return sentenceResult(`Updated comment ${comment_id}.`, {
+              comment_id,
+              updated: true,
+            });
           }
         );
       })
@@ -217,16 +229,20 @@ export function registerCommentTools(
       description:
         'Removes a comment permanently. Replies to it are not removed with it. ' +
         'Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         comment_id: idParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ comment_id, confirm_token }) =>
+    async ({ comment_id, confirm_token }, mcp) =>
       run(async () => {
         assertCommentScopable(scope, 'delete_comment');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_comment',
@@ -246,7 +262,9 @@ export function registerCommentTools(
               objectOf(data.comments, 'the comment mutation').delete,
               'delete_comment'
             );
-            return textResult(`Deleted comment ${comment_id}.`);
+            return sentenceResult(`Deleted comment ${comment_id}.`, {
+              deleted_comment_id: comment_id,
+            });
           }
         );
       })

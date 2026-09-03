@@ -1,17 +1,11 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
-import { assertSucceeded, type WikiJsApi } from '../api.js';
-import { unifiedDiff } from '../diff.js';
-import * as gql from '../gql/pages.js';
-import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
-import { assertWithinScope } from '../paths.js';
+import { marked, plain } from '../output-schema.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
   run,
-  textResult,
+  sentenceResult,
 } from '../result.js';
 import {
   confirmTokenParam,
@@ -19,6 +13,14 @@ import {
   localeParam,
   pagePathParam,
 } from '../schema.js';
+
+import { assertSucceeded, type WikiJsApi } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
+import { unifiedDiff } from '../diff.js';
+import * as gql from '../gql/pages.js';
+import { guarded } from '../guard.js';
+import { listOf, objectOf } from '../normalize.js';
+import { assertWithinScope } from '../paths.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -77,7 +79,7 @@ async function versionContent(
 
 export function registerHistoryTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_page_history',
@@ -88,7 +90,7 @@ export function registerHistoryTools(
         'what and when. This is the one Wiki.js query that really paginates. ' +
         'The version ids here are what get_page_version, diff_page_versions and ' +
         'restore_page_version take.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
@@ -105,8 +107,9 @@ export function registerHistoryTools(
           .max(200)
           .optional()
           .describe('Entries per page (default 50).'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id, path, locale, page, page_size }) =>
       run(async () => {
@@ -142,11 +145,12 @@ export function registerHistoryTools(
         'Returns a single historical version of a page, including its full ' +
         'body as it was then. To find out what changed between two versions, ' +
         'diff_page_versions is far cheaper than reading both.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam,
         version_id: idParam.describe('Version id from list_page_history.'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id, version_id }) =>
       run(async () => {
@@ -163,7 +167,7 @@ export function registerHistoryTools(
         'Returns a unified diff between two versions of a page — or between one ' +
         'version and the page as it is now, if to_version is omitted. Answers ' +
         '"what changed here" in one call instead of two full page bodies.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam,
         from_version: idParam.describe(
           'The older version id, from list_page_history.'
@@ -180,8 +184,9 @@ export function registerHistoryTools(
           .max(20)
           .optional()
           .describe('Unchanged lines shown around each change (default 3).'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id, from_version, to_version, context_lines }) =>
       run(async () => {
@@ -243,8 +248,9 @@ export function registerHistoryTools(
         'Returns the version of a page that is newer than the one you read — ' +
         'what update_page points at when it refuses to write. Shows who saved ' +
         'it and when, so the change can be redone on top instead of discarded.',
-      inputSchema: { page_id: idParam },
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ page_id: idParam }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ page_id }) =>
       run(async () => {
@@ -271,19 +277,23 @@ export function registerHistoryTools(
         'Rolls a page back to a stored version. The current content is not ' +
         'lost — it becomes another entry in the history — but the live page is ' +
         'replaced. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam,
         version_id: idParam.describe('Version id from list_page_history.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ page_id, version_id, confirm_token }) =>
+    async ({ page_id, version_id, confirm_token }, mcp) =>
       run(async () => {
         const target = await resolveId(api, { page_id });
         assertWithinScope(scope, String(target.path), 'page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'restore_page_version',
@@ -301,8 +311,9 @@ export function registerHistoryTools(
             );
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.restore, 'restore_page_version');
-            return textResult(
-              `Restored page ${page_id} to version ${version_id}.`
+            return sentenceResult(
+              `Restored page ${page_id} to version ${version_id}.`,
+              { page_id, version_id, restored: true }
             );
           }
         );

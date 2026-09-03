@@ -203,6 +203,32 @@ export function objectOf(
   throw new Error(`Wiki.js returned ${what} in an unexpected shape.`);
 }
 
+const MAX_ERROR_BODY_LENGTH = 2000;
+
+/**
+ * Limits what an upstream error body can inject into the model context.
+ *
+ * Wiki.js' GraphQL errors are JSON, but a proxy or WAF in front of it answers
+ * with an HTML page, which is pure noise here.
+ *
+ * Lives here rather than beside the error results it is used from: `api.ts`
+ * needs it in a constructor, and `result.ts` imports `api.ts`, so keeping it
+ * there would have made the two files import each other.
+ */
+export function sanitizeErrorBody(body: string): string {
+  const trimmed = body.trim();
+  // Anything markup-shaped: a reverse proxy's error page or a WAF block page.
+  // The check is deliberately loose — an XML declaration, a leading comment or
+  // a doctype followed by a newline are all the same thing here.
+  if (/^(<!doctype|<html[\s>]|<\?xml|<!--)/i.test(trimmed)) {
+    return '(HTML error page omitted)';
+  }
+  if (trimmed.length > MAX_ERROR_BODY_LENGTH) {
+    return `${trimmed.slice(0, MAX_ERROR_BODY_LENGTH)}… (truncated)`;
+  }
+  return trimmed;
+}
+
 /** Keeps only the named properties, dropping undefined ones. */
 export function pick<T extends Record<string, unknown>>(
   source: T,

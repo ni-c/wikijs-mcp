@@ -1,23 +1,16 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type {
+  McpServer,
+  CallToolResult,
+  InputRequiredResult,
+} from '@modelcontextprotocol/server';
 import { z } from 'zod';
-
-import { assertSucceeded, WikiJsGraphQLError, type WikiJsApi } from '../api.js';
-import { identifier } from '../confirm.js';
-import { applyEdits } from '../edits.js';
-import * as adminGql from '../gql/admin.js';
-import * as gql from '../gql/pages.js';
-import { matchPages } from '../grep.js';
-import { guarded } from '../guard.js';
-import { outlineOf, sectionOf, windowOf } from '../markdown.js';
-import { listOf, objectOf } from '../normalize.js';
-import { assertWithinScope } from '../paths.js';
+import { marked, plain } from '../output-schema.js';
 import {
   budgetedList,
   budgetedUntrustedResult,
   jsonResult,
   run,
-  textResult,
+  sentenceResult,
 } from '../result.js';
 import {
   confirmTokenParam,
@@ -34,6 +27,23 @@ import {
   tagParam,
   titleParam,
 } from '../schema.js';
+
+import { assertSucceeded, WikiJsGraphQLError, type WikiJsApi } from '../api.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
+import { identifier } from '../resource-key.js';
+import { applyEdits } from '../edits.js';
+import * as adminGql from '../gql/admin.js';
+import * as gql from '../gql/pages.js';
+import { matchPages } from '../grep.js';
+import { guarded } from '../guard.js';
+import { outlineOf, sectionOf, windowOf } from '../markdown.js';
+import { listOf, objectOf } from '../normalize.js';
+import { assertWithinScope } from '../paths.js';
 import type { ToolContext } from './context.js';
 
 /** Bounds `grep_pages`, which is the one tool that fetches many pages at once. */
@@ -141,7 +151,7 @@ function tagNames(value: unknown): string[] {
 
 export function registerPageTools(
   server: McpServer,
-  { api, confirmations, scope, reads, readOnly }: ToolContext
+  { api, approval, confirmations, scope, reads, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_pages',
@@ -153,7 +163,7 @@ export function registerPageTools(
         'short answer is never mistaken for a small wiki. Wiki.js has no offset ' +
         'for this query, so narrow with tags, locale, creator_id or author_id ' +
         'rather than paging. Returns no page content; use get_page for that.',
-      inputSchema: {
+      inputSchema: z.object({
         limit: limitParam.optional(),
         tags: z
           .array(tagParam)
@@ -172,8 +182,9 @@ export function registerPageTools(
           .optional()
           .describe('Sort field (default UPDATED).'),
         direction: z.enum(['ASC', 'DESC']).optional(),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({
       limit,
@@ -233,7 +244,7 @@ export function registerPageTools(
         'either pass section to get one heading’s worth, or offset and ' +
         'max_chars to read the page in windows — a large page will otherwise be ' +
         'truncated to fit the result budget.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
@@ -267,8 +278,9 @@ export function registerPageTools(
           .describe(
             `With mode=content: how much to return (default ${DEFAULT_MAX_CHARS}).`
           ),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({
       page_id,
@@ -278,7 +290,7 @@ export function registerPageTools(
       section,
       offset,
       max_chars,
-    }): Promise<CallToolResult> =>
+    }): Promise<CallToolResult | InputRequiredResult> =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
@@ -357,7 +369,7 @@ export function registerPageTools(
         'active engine so you can tell. If the engine is basic and you are ' +
         'looking for something written inside a page, use grep_pages instead. ' +
         'Results carry no excerpt; follow up with get_page.',
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().trim().min(1).max(500).describe('Search terms.'),
         path: z
           .string()
@@ -367,8 +379,9 @@ export function registerPageTools(
           .describe('Restrict to this path prefix.'),
         locale: localeParam.optional(),
         limit: limitParam.optional(),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ query, path, locale, limit }) =>
       run(async () => {
@@ -435,7 +448,7 @@ export function registerPageTools(
         'expensive path — one request per page — so narrow it with path_prefix, ' +
         'tags or locale, and keep max_pages small. Returns matching lines with ' +
         'context, not whole pages.',
-      inputSchema: {
+      inputSchema: z.object({
         pattern: patternParam,
         ignore_case: z
           .boolean()
@@ -465,8 +478,9 @@ export function registerPageTools(
           .max(10)
           .optional()
           .describe('Lines of context around each match (default 1).'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({
       pattern,
@@ -496,14 +510,20 @@ export function registerPageTools(
           title?: string;
           locale?: string;
         }>;
-        // Wiki.js' own `limit` counts joined tag rows, not pages, so the ceiling
-        // is applied here — otherwise this would scan a fraction of what it
-        // reports and quietly miss matches.
-        const all = everything.slice(0, GREP_MAX_PAGES);
-        const candidates = all.filter((p) =>
+        // Filter first, cap second. `tags` and `locale` are GraphQL variables
+        // and have already narrowed `everything`; path_prefix is the one
+        // narrowing that happens here, and applying it after the cap made it
+        // narrow the wrong set — on a wiki whose 200 most recently updated
+        // pages are all under blog/, a search under docs/ answered "0 pages
+        // scanned, 0 matched" without ever looking at the 800 pages that did
+        // match. Nothing is saved by capping first: the whole list is already
+        // in memory, because Wiki.js' own `limit` counts joined tag rows rather
+        // than pages and so is never sent.
+        const matching = everything.filter((p) =>
           path_prefix === undefined ? true : p.path.startsWith(path_prefix)
         );
-        const wanted = candidates.slice(0, budget);
+        const all = matching.slice(0, GREP_MAX_PAGES);
+        const wanted = all.slice(0, budget);
 
         // One deadline for the whole fetch loop. Each request has its own
         // 30-second timeout, so without this a slow upstream turns a single tool
@@ -550,16 +570,19 @@ export function registerPageTools(
         });
 
         const notes: string[] = [];
-        if (candidates.length > wanted.length) {
+        if (all.length > wanted.length) {
           notes.push(
-            `${candidates.length - wanted.length} further pages matched the ` +
+            `${all.length - wanted.length} further pages matched the ` +
               'filters but were not fetched. Raise max_pages, or narrow with ' +
               'path_prefix, tags or locale.'
           );
         }
-        if (everything.length > all.length) {
+        if (matching.length > all.length) {
+          // Counted after the filter, because that is the number the caller can
+          // do something about: "the wiki has 5000 pages" says nothing when the
+          // question was about the 800 under docs/.
           notes.push(
-            `This wiki has ${everything.length} pages; only the ` +
+            `${matching.length} pages matched the filters; only the ` +
               `${GREP_MAX_PAGES} most recently updated were considered.`
           );
         }
@@ -609,7 +632,7 @@ export function registerPageTools(
         'and pages, "FOLDERS" only folders, "PAGES" only pages. Wiki.js offers ' +
         'no limit on this query, so a very wide level is truncated to the ' +
         'result budget.',
-      inputSchema: {
+      inputSchema: z.object({
         path: z
           .string()
           .trim()
@@ -622,8 +645,9 @@ export function registerPageTools(
           .boolean()
           .optional()
           .describe('Also return the path from the root down to this level.'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ path, locale, mode, include_ancestors }) =>
       run(async () => {
@@ -653,8 +677,9 @@ export function registerPageTools(
         'wiki’s link graph for one locale. Useful for finding what would break ' +
         'before moving or deleting a page. Wiki.js returns the whole graph at ' +
         'once and offers no filter, so on a large wiki this is truncated.',
-      inputSchema: { locale: localeParam.optional() },
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({ locale: localeParam.optional() }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ locale }) =>
       run(async () => {
@@ -681,7 +706,7 @@ export function registerPageTools(
         'Wiki.js answers PageDuplicateCreate otherwise, and update_page is what ' +
         'changes an existing one. The editor decides how content is ' +
         'interpreted, so markdown source needs editor="markdown".',
-      inputSchema: {
+      inputSchema: z.object({
         path: pagePathParam,
         title: titleParam,
         content: contentParam,
@@ -696,8 +721,9 @@ export function registerPageTools(
             'Publish immediately (default true). False creates a draft.'
           ),
         is_private: z.boolean().optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({
       path,
@@ -742,8 +768,13 @@ export function registerPageTools(
         'to the wrong place. Before writing, this checks whether somebody else ' +
         'changed the page since it was read and refuses to clobber them; pass ' +
         'force=true to overwrite deliberately. Metadata fields can be changed ' +
-        'on their own, without touching the text.',
-      inputSchema: {
+        'on their own, without touching the text.\n\n' +
+        'That refusal is a normal result and not an error: it explains what to ' +
+        'do — read the page again with get_page, redo the change on top of ' +
+        'what is now there, and write. Note that render_page also bumps the ' +
+        'page’s timestamp, so calling it between your read and your write ' +
+        'triggers the same refusal even though nobody else touched anything.',
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
@@ -784,8 +815,9 @@ export function registerPageTools(
             'Write even though the page changed since you read it. Overwrites ' +
               'the other person’s edit.'
           ),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({
       page_id,
@@ -834,14 +866,32 @@ export function registerPageTools(
             // Drop the stale read, so a second attempt without re-reading does
             // not compare against the same superseded timestamp again.
             reads.forget(id);
-            return textResult(
+            // Deliberately NOT an error result, and the integration suite
+            // says so in as many words: an `isError` would make a client
+            // surface this as a failure, when what it is is an instruction for
+            // recovering. The declared output schema is what it is because of
+            // this branch — `written: false` and the two timestamps are the
+            // fields a caller acts on, and the sentence below is the same
+            // thing said to a reader.
+            return sentenceResult(
               `Refusing to write: page ${id} changed after you read it ` +
                 `(you saw ${checkoutDate}, it is now ${String(page.updatedAt)}). ` +
                 'Somebody else saved it in the meantime and this write would ' +
                 'silently discard their edit. Call get_page_conflict to see the ' +
                 'newer version, re-read the page with get_page and redo the ' +
                 'change on top of it — or call update_page again with ' +
-                'force=true to overwrite their edit on purpose.'
+                'force=true to overwrite their edit on purpose.',
+              {
+                page_id: id,
+                written: false,
+                conflict: {
+                  you_saw: checkoutDate,
+                  it_is_now: String(page.updatedAt),
+                },
+                note:
+                  'Call get_page_conflict, re-read with get_page and redo the ' +
+                  'change — or call update_page again with force=true.',
+              }
             );
           }
         }
@@ -915,24 +965,28 @@ export function registerPageTools(
         'Moves a page to another path, another locale, or both. Internal links ' +
         'pointing at the old path are NOT rewritten by Wiki.js — check ' +
         'list_page_links first if that matters.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
         destination_path: pagePathParam,
         destination_locale: localeParam.optional(),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({
-      page_id,
-      path,
-      locale,
-      destination_path,
-      destination_locale,
-      confirm_token,
-    }) =>
+    async (
+      {
+        page_id,
+        path,
+        locale,
+        destination_path,
+        destination_locale,
+        confirm_token,
+      },
+      mcp
+    ) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
@@ -945,6 +999,9 @@ export function registerPageTools(
         assertWithinScope(scope, destination_path, 'destination page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'move_page',
@@ -966,8 +1023,9 @@ export function registerPageTools(
             });
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.move, 'move_page');
-            return textResult(
-              `Moved page ${id} to ${destination_path} (${toLocale}).`
+            return sentenceResult(
+              `Moved page ${id} to ${destination_path} (${toLocale}).`,
+              { page_id: id, path: destination_path, locale: toLocale }
             );
           }
         );
@@ -981,15 +1039,16 @@ export function registerPageTools(
       description:
         'Deletes a page and its history. Wiki.js has no trash — this cannot be ' +
         'undone from here. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ page_id, path, locale, confirm_token }) =>
+    async ({ page_id, path, locale, confirm_token }, mcp) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
@@ -997,6 +1056,9 @@ export function registerPageTools(
         assertWithinScope(scope, pagePath, 'page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_page',
@@ -1012,7 +1074,10 @@ export function registerPageTools(
             });
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.delete, 'delete_page');
-            return textResult(`Deleted page ${id} (${pagePath}).`);
+            return sentenceResult(`Deleted page ${id} (${pagePath}).`, {
+              deleted_page_id: id,
+              path: pagePath,
+            });
           }
         );
       })
@@ -1027,22 +1092,26 @@ export function registerPageTools(
         'body — converting markdown to "code" leaves the markdown source as raw ' +
         'HTML text. Use it to correct a page created with the wrong editor, not ' +
         'to reformat one.',
-      inputSchema: {
+      inputSchema: z.object({
         page_id: idParam.optional(),
         path: pagePathParam.optional(),
         locale: localeParam.optional(),
         editor: editorParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: true },
+      }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ page_id, path, locale, editor, confirm_token }) =>
+    async ({ page_id, path, locale, editor, confirm_token }, mcp) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
         const id = page.id as number;
         assertWithinScope(scope, String(page.path), 'page path');
 
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'convert_page_editor',
@@ -1060,7 +1129,10 @@ export function registerPageTools(
             );
             const pages = objectOf(data.pages, 'the page mutation');
             assertSucceeded(pages.convert, 'convert_page_editor');
-            return textResult(`Converted page ${id} to ${editor}.`);
+            return sentenceResult(`Converted page ${id} to ${editor}.`, {
+              page_id: id,
+              editor,
+            });
           }
         );
       })

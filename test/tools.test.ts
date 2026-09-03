@@ -560,8 +560,10 @@ describe('destructive tools', () => {
         },
       })
     );
-    const { text, close } = await connect();
-    const result = await confirmed(text, 'delete_page', { path: 'docs/setup' });
+    const { client, close } = await connect();
+    const result = await confirmed(client, 'delete_page', {
+      path: 'docs/setup',
+    });
     expect(result).toContain('Deleted page 7');
     expect(stub.calls.filter((c) => c.query.includes('delete(')).length).toBe(
       1
@@ -632,8 +634,8 @@ describe('create_user', () => {
         },
       },
     });
-    const { text, close } = await connect();
-    const out = await confirmed(text, 'create_user', {
+    const { client, close } = await connect();
+    const out = await confirmed(client, 'create_user', {
       email: 'new@example.test',
       name: 'New',
       password: 'a-long-password',
@@ -656,8 +658,8 @@ describe('create_user', () => {
       },
       'query SearchUsers': { data: { users: { search: [] } } },
     });
-    const { text, close } = await connect();
-    const out = await confirmed(text, 'create_user', {
+    const { client, close } = await connect();
+    const out = await confirmed(client, 'create_user', {
       email: 'new@example.test',
       name: 'New',
       password: 'hunter2-hunter2',

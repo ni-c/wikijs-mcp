@@ -9,6 +9,7 @@ import {
   missingConfigMessage,
   type Config,
 } from './config.js';
+import { sanitizeErrorBody } from './normalize.js';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -89,15 +90,43 @@ export class WikiJsGraphQLError extends Error {
  * swallowed and replaced with a plausible wrong answer" case.
  */
 export class WikiJsOperationError extends Error {
+  /**
+   * The upstream's own sentence, bounded — never the raw one.
+   *
+   * `message` and `slug` come straight out of `responseResult`, and Wiki.js
+   * puts whatever its database said in there: send a top-level comment with a
+   * null `replyTo` and the Postgres constraint error comes back with the whole
+   * INSERT statement in it. Nothing bounds that upstream, `MAX_RESPONSE_BYTES`
+   * is 32 MB, and the result budget does not apply to an error result — so the
+   * ceiling belongs here, in the one place every operation failure passes
+   * through.
+   */
+  public readonly detail: string;
+
+  /**
+   * The Wiki.js error slug, reduced to the shape a slug actually has.
+   *
+   * `PageDuplicateCreate` and friends survive this untouched, so
+   * `operationHint` still switches on them — but the field is free text on the
+   * wire, and it gets interpolated into a sentence this server wrote. A slug
+   * carrying a newline could otherwise open a line of its own right next to the
+   * marker that says which half of the message came from upstream.
+   */
+  public readonly slug: string;
+
   constructor(
     public readonly errorCode: number,
-    public readonly slug: string,
+    slug: string,
     detail: string,
     public readonly operation: string
   ) {
+    const bounded = sanitizeErrorBody(detail);
+    const cleanSlug = slug.replaceAll(/[^A-Za-z0-9_.:-]/g, '').slice(0, 64);
     super(
-      `Wiki.js refused ${operation}: ${detail} (${slug}, code ${errorCode})`
+      `Wiki.js refused ${operation}: ${bounded} (${cleanSlug || 'unknown'}, code ${errorCode})`
     );
+    this.detail = bounded;
+    this.slug = cleanSlug || 'unknown';
     this.name = 'WikiJsOperationError';
   }
 }

@@ -1,6 +1,5 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import type { CallToolResult } from '@modelcontextprotocol/client';
 import { vi } from 'vitest';
 
 import type { Config } from '../src/config.js';
@@ -17,6 +16,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     locale: 'en',
     insecureTls: false,
     readOnly: false,
+    elicitation: true,
     allowedPaths: undefined,
     allowTools: undefined,
     denyTools: undefined,
@@ -122,7 +122,7 @@ export function stubFetch(routes: Routes = {}): FetchStub {
         status: reply.status ?? 200,
         headers: {
           'content-type': reply.contentType ?? 'application/json',
-          ...(reply.headers ?? {}),
+          ...reply.headers,
         },
       });
     })
@@ -131,9 +131,33 @@ export function stubFetch(routes: Routes = {}): FetchStub {
   return { calls };
 }
 
-/** Connects an in-memory client to a server built from `config`. */
-export async function connect(config: Config = testConfig()): Promise<{
+/** How a client that can show a dialog answers it. */
+export type ElicitBehaviour = 'accept' | 'decline' | 'cancel';
+
+/** The confirmation token a guarded tool handed back on its first call. */
+export function tokenOf(text: string): string {
+  const match = /confirm_token="([0-9a-f]{32})"/.exec(text);
+  if (!match?.[1]) {
+    throw new Error(
+      `no confirm_token in the result — did the client declare elicitation? ` +
+        `Got: ${text.slice(0, 300)}`
+    );
+  }
+  return match[1];
+}
+
+/**
+ * Connects a client to the real server.
+ *
+ * Without `elicit` the client declares no elicitation capability, which is the
+ * case the two-call token exists for and what every other test here drives.
+ * With it, the client answers the dialog and `prompts` records what the server
+ * put in front of the user.
+ */
+export interface Connected {
   client: Client;
+  /** Every message the server put in front of the user, in order. */
+  prompts: string[];
   call: (
     name: string,
     args?: Record<string, unknown>
@@ -141,11 +165,29 @@ export async function connect(config: Config = testConfig()): Promise<{
   text: (name: string, args?: Record<string, unknown>) => Promise<string>;
   json: (name: string, args?: Record<string, unknown>) => Promise<never>;
   close: () => Promise<void>;
-}> {
+}
+
+export async function connect(
+  config: Config = testConfig(),
+  elicit?: ElicitBehaviour
+): Promise<Connected> {
   const server = createServer(config);
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: 'test', version: '1.0.0' });
+  const prompts: string[] = [];
+  const client = new Client(
+    { name: 'test', version: '1.0.0' },
+    elicit === undefined ? {} : { capabilities: { elicitation: {} } }
+  );
+  if (elicit !== undefined) {
+    client.setRequestHandler('elicitation/create', (request) => {
+      const params = request.params as { message?: string };
+      prompts.push(params.message ?? '');
+      if (elicit === 'cancel') return { action: 'cancel' };
+      if (elicit === 'decline') return { action: 'decline' };
+      return { action: 'accept', content: { confirm: true } };
+    });
+  }
   await Promise.all([
     client.connect(clientTransport),
     server.connect(serverTransport),
@@ -178,7 +220,35 @@ export async function connect(config: Config = testConfig()): Promise<{
     return JSON.parse(raw.slice(start)) as never;
   };
 
-  return { client, call, text, json, close: () => client.close() };
+  return { client, prompts, call, text, json, close: () => client.close() };
+}
+
+/**
+ * Runs a guarded tool through both halves of its two-call token.
+ *
+ * Takes the client rather than living on what `connect` returns, so the
+ * signature is the same in every repository in this family — including the
+ * ones whose `connect` hands back a bare `Client`.
+ *
+ * Only meaningful on a client that declared no elicitation: with a dialog
+ * available the server asks instead of offering a token, which is the point.
+ */
+export async function confirmed(
+  client: Client,
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<string> {
+  const textOf = async (extra: Record<string, unknown>): Promise<string> => {
+    const result = (await client.callTool({
+      name,
+      arguments: { ...args, ...extra },
+    })) as CallToolResult;
+    return result.content
+      .map((part) => ('text' in part ? part.text : ''))
+      .join('\n');
+  };
+  const first = await textOf({});
+  return textOf({ confirm_token: tokenOf(first) });
 }
 
 /** Names of the tools a server built from `config` actually registers. */
@@ -187,18 +257,4 @@ export async function toolNames(config: Config): Promise<string[]> {
   const { tools } = await client.listTools();
   await close();
   return tools.map((tool) => tool.name);
-}
-
-/** Runs a guarded tool through its confirmation dance and returns the result. */
-export async function confirmed(
-  text: (name: string, args?: Record<string, unknown>) => Promise<string>,
-  name: string,
-  args: Record<string, unknown>
-): Promise<string> {
-  const prompt = await text(name, args);
-  const token = /confirm_token="([0-9a-f]{32})"/.exec(prompt)?.[1];
-  if (token === undefined) {
-    throw new Error(`${name} offered no confirmation token: ${prompt}`);
-  }
-  return text(name, { ...args, confirm_token: token });
 }

@@ -1,14 +1,16 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
-import { identifier } from '../confirm.js';
+import { DESTRUCTIVE, WRITE_IDEMPOTENT } from './annotations.js';
+import { identifier } from '../resource-key.js';
 import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { objectOf } from '../normalize.js';
-import { PathScopeError, type PathScope } from '../paths.js';
-import { jsonResult, run, textResult } from '../result.js';
+import { assertWithinScope, PathScopeError, type PathScope } from '../paths.js';
+import { jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -34,6 +36,13 @@ const olderThanParam = z
  * wiki rather than one page, and several take minutes on a large instance while
  * the API keeps answering. All of them are gated except `render_page`, which
  * affects exactly one page and cannot lose anything.
+ *
+ * Gating and scoping are separate questions and answered separately here. The
+ * three lossless instance-wide operations are deliberately *not* gated — a
+ * dialog in front of something that loses nothing is how people learn to tick
+ * without reading — but they are still refused under WIKIJS_ALLOWED_PATHS,
+ * because that variable is a promise about reach rather than about damage, and
+ * "every page in the wiki" is outside any prefix.
  */
 /**
  * Refuses an operation that acts on the whole wiki while writes are confined.
@@ -43,6 +52,12 @@ const olderThanParam = z
  * way to run them anyway. An operator who set WIKIJS_ALLOWED_PATHS was told
  * nothing outside it can be written; this keeps that true instead of quietly
  * making it an exception.
+ *
+ * Applied to every instance-wide operation, not only the destructive ones. The
+ * lossless three cost the whole wiki minutes of slower rendering and incomplete
+ * search, which is an effect outside the prefix even though nothing is deleted;
+ * and a scope enforced on some members of a class is the sort of thing whose
+ * documentation stays categorical long after the code stopped being.
  */
 function refuseWhenScoped(scope: PathScope, tool: string): void {
   if (!scope.active) return;
@@ -54,7 +69,7 @@ function refuseWhenScoped(scope: PathScope, tool: string): void {
 
 export function registerMaintenanceTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   if (readOnly) return;
 
@@ -65,12 +80,41 @@ export function registerMaintenanceTools(
       description:
         'Forces Wiki.js to regenerate one page’s HTML from its source. The fix ' +
         'for a page whose rendering is stale after a theme or renderer change. ' +
-        'Changes no content and cannot lose anything.',
-      inputSchema: { page_id: idParam },
-      annotations: { idempotentHint: true },
+        'Changes no content and cannot lose anything.\n\n' +
+        'It does, however, bump the page’s updatedAt — and update_page compares ' +
+        'that against when you last read the page, to catch somebody else ' +
+        'saving in between. So a render between your read and your write makes ' +
+        'update_page refuse *your own* next write, saying the page changed ' +
+        'after you read it. If that happens, call get_page again and then ' +
+        'write; nothing was lost. Better still, render after writing rather ' +
+        'than before.',
+      inputSchema: z.object({ page_id: idParam }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
     async ({ page_id }) =>
       run(async () => {
+        // The one page-writing tool that took a page id and never asked where
+        // that page lives. It changes no content, but it rewrites the stored
+        // HTML and bumps updatedAt — and update_page's conflict check reads
+        // exactly that field, so an unscoped render is also a way to make
+        // somebody else's next write outside the prefix fail. Only looked up
+        // while a scope is set, the way create_comment does it, because the
+        // extra round trip buys nothing when every path is allowed.
+        if (scope.active) {
+          const page = objectOf(
+            objectOf(
+              (
+                await api.execute('render_page', gql.GET_PAGE_METADATA, {
+                  id: page_id,
+                })
+              ).pages,
+              'the page query'
+            ).single,
+            `page ${page_id}`
+          );
+          assertWithinScope(scope, String(page.path), 'page path');
+        }
         const data = await api.execute('render_page', gql.RENDER_PAGE, {
           id: page_id,
         });
@@ -78,7 +122,10 @@ export function registerMaintenanceTools(
           objectOf(data.pages, 'the page mutation').render,
           'render_page'
         );
-        return textResult(`Re-rendered page ${page_id}.`);
+        return sentenceResult(`Re-rendered page ${page_id}.`, {
+          page_id,
+          rendered: true,
+        });
       })
   );
 
@@ -89,32 +136,25 @@ export function registerMaintenanceTools(
       description:
         'Drops Wiki.js’ rendered-page cache for the whole wiki. Nothing is ' +
         'lost, but every page has to be rendered again on first access, so a ' +
-        'busy instance gets slower for a while. Requires a confirmation token.',
-      inputSchema: { confirm_token: confirmTokenParam.optional() },
-      annotations: { idempotentHint: false },
+        'busy instance gets slower for a while.',
+      inputSchema: z.object({}),
+      // Not guarded, and the argument for guarding it was always the wrong
+      // one: it costs time, not content. A dialog in front of an operation
+      // that loses nothing is how people learn to tick without reading, which
+      // spends exactly the attention purge_page_history needs.
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ confirm_token }) =>
-      run(async () =>
-        guarded(
-          confirmations,
-          {
-            tool: 'flush_page_cache',
-            targets: ['instance'],
-            what: 'flush the rendered-page cache of the entire wiki',
-            consequence:
-              'No content is lost, but every page is rendered from scratch on next access.',
-            confirmToken: confirm_token,
-          },
-          async () => {
-            const data = await api.execute('flush_page_cache', gql.FLUSH_CACHE);
-            assertSucceeded(
-              objectOf(data.pages, 'the page mutation').flushCache,
-              'flush_page_cache'
-            );
-            return textResult('Flushed the page cache.');
-          }
-        )
-      )
+    async () =>
+      run(async () => {
+        refuseWhenScoped(scope, 'flush_page_cache');
+        const data = await api.execute('flush_page_cache', gql.FLUSH_CACHE);
+        assertSucceeded(
+          objectOf(data.pages, 'the page mutation').flushCache,
+          'flush_page_cache'
+        );
+        return sentenceResult('Flushed the page cache.', { flushed: true });
+      })
   );
 
   server.registerTool(
@@ -124,36 +164,28 @@ export function registerMaintenanceTools(
       description:
         'Recomputes the folder structure Wiki.js derives from page paths. The ' +
         'repair for a navigation tree that disagrees with the pages actually ' +
-        'present, usually after a bulk import or a database edit. Requires a ' +
-        'confirmation token.',
-      inputSchema: { confirm_token: confirmTokenParam.optional() },
-      annotations: { idempotentHint: false },
+        'present, usually after a bulk import or a database edit. Page content ' +
+        'is untouched, but it walks every page and can take minutes.',
+      inputSchema: z.object({}),
+      // Not guarded, and the argument for guarding it was always the wrong
+      // one: it costs time, not content. A dialog in front of an operation
+      // that loses nothing is how people learn to tick without reading, which
+      // spends exactly the attention purge_page_history needs.
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ confirm_token }) =>
-      run(async () =>
-        guarded(
-          confirmations,
-          {
-            tool: 'rebuild_page_tree',
-            targets: ['instance'],
-            what: 'rebuild the page tree of the entire wiki',
-            consequence:
-              'Page content is untouched, but the operation walks every page and can take minutes.',
-            confirmToken: confirm_token,
-          },
-          async () => {
-            const data = await api.execute(
-              'rebuild_page_tree',
-              gql.REBUILD_TREE
-            );
-            assertSucceeded(
-              objectOf(data.pages, 'the page mutation').rebuildTree,
-              'rebuild_page_tree'
-            );
-            return textResult('Rebuilt the page tree.');
-          }
-        )
-      )
+    async () =>
+      run(async () => {
+        refuseWhenScoped(scope, 'rebuild_page_tree');
+        const data = await api.execute('rebuild_page_tree', gql.REBUILD_TREE);
+        assertSucceeded(
+          objectOf(data.pages, 'the page mutation').rebuildTree,
+          'rebuild_page_tree'
+        );
+        return sentenceResult('Rebuilt the page tree.', {
+          rebuilt: 'page-tree',
+        });
+      })
   );
 
   server.registerTool(
@@ -164,35 +196,31 @@ export function registerMaintenanceTools(
         'Reindexes every page in the active search engine. Required once after ' +
         'switching away from "Database - Basic", because the new engine starts ' +
         'empty and search silently returns nothing until this runs. On the ' +
-        'basic engine it does nothing. Requires a confirmation token.',
-      inputSchema: { confirm_token: confirmTokenParam.optional() },
-      annotations: { idempotentHint: false },
+        'basic engine it does nothing. Search results may be incomplete while ' +
+        'it runs, and it can take minutes on a large wiki.',
+      inputSchema: z.object({}),
+      // Not guarded, and the argument for guarding it was always the wrong
+      // one: it costs time, not content. A dialog in front of an operation
+      // that loses nothing is how people learn to tick without reading, which
+      // spends exactly the attention purge_page_history needs.
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ confirm_token }) =>
-      run(async () =>
-        guarded(
-          confirmations,
-          {
-            tool: 'rebuild_search_index',
-            targets: ['instance'],
-            what: 'rebuild the search index over every page in the wiki',
-            consequence:
-              'Search results may be incomplete while it runs, and it can take minutes on a large wiki.',
-            confirmToken: confirm_token,
-          },
-          async () => {
-            const data = await api.execute(
-              'rebuild_search_index',
-              adminGql.REBUILD_SEARCH_INDEX
-            );
-            assertSucceeded(
-              objectOf(data.search, 'the search mutation').rebuildIndex,
-              'rebuild_search_index'
-            );
-            return textResult('Rebuilt the search index.');
-          }
-        )
-      )
+    async () =>
+      run(async () => {
+        refuseWhenScoped(scope, 'rebuild_search_index');
+        const data = await api.execute(
+          'rebuild_search_index',
+          adminGql.REBUILD_SEARCH_INDEX
+        );
+        assertSucceeded(
+          objectOf(data.search, 'the search mutation').rebuildIndex,
+          'rebuild_search_index'
+        );
+        return sentenceResult('Rebuilt the search index.', {
+          rebuilt: 'search-index',
+        });
+      })
   );
 
   server.registerTool(
@@ -203,16 +231,20 @@ export function registerMaintenanceTools(
         'Deletes stored page versions older than a cutoff, across the whole ' +
         'wiki. The versions are gone permanently — this is the one maintenance ' +
         'operation that destroys data. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         older_than: olderThanParam,
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ older_than, confirm_token }) =>
+    async ({ older_than, confirm_token }, mcp) =>
       run(async () => {
         refuseWhenScoped(scope, 'purge_page_history');
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'purge_page_history',
@@ -232,7 +264,12 @@ export function registerMaintenanceTools(
               objectOf(data.pages, 'the page mutation').purgeHistory,
               'purge_page_history'
             );
-            return textResult(`Purged page versions older than ${older_than}.`);
+            return sentenceResult(
+              `Purged page versions older than ${older_than}.`,
+              {
+                purged_older_than: older_than,
+              }
+            );
           }
         );
       })
@@ -247,14 +284,15 @@ export function registerMaintenanceTools(
         'The usual reason is a wiki set up under the wrong locale code. Every ' +
         'page path changes, so every external link into the wiki breaks. ' +
         'Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         source_locale: localeParam.describe('Locale to move pages out of.'),
         target_locale: localeParam.describe('Locale to move pages into.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ source_locale, target_locale, confirm_token }) =>
+    async ({ source_locale, target_locale, confirm_token }, mcp) =>
       run(async () => {
         refuseWhenScoped(scope, 'migrate_pages_locale');
         if (source_locale === target_locale) {
@@ -263,6 +301,9 @@ export function registerMaintenanceTools(
           );
         }
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             // Labelled, not just listed. setResourceKey sorts its targets so

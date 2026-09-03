@@ -1,13 +1,20 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { marked, plain } from '../output-schema.js';
 
 import { assertSucceeded, type WikiJsApi } from '../api.js';
-import { identifier } from '../confirm.js';
+import {
+  DESTRUCTIVE,
+  READ_ONLY,
+  WRITE,
+  WRITE_IDEMPOTENT,
+} from './annotations.js';
+import { identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
 import { assertWithinScope, type PathScope } from '../paths.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -182,7 +189,7 @@ function contentTypeFor(filename: string): string {
 
 export function registerAssetTools(
   server: McpServer,
-  { api, confirmations, scope, readOnly }: ToolContext
+  { api, approval, confirmations, scope, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'list_assets',
@@ -192,7 +199,7 @@ export function registerAssetTools(
         'Lists the images and files in one asset folder. Folder 0 is the root. ' +
         'Assets are flat within a folder and Wiki.js has no search across them, ' +
         'so finding one means walking list_asset_folders.',
-      inputSchema: {
+      inputSchema: z.object({
         folder_id: idParam
           .or(z.literal(0))
           .optional()
@@ -203,8 +210,9 @@ export function registerAssetTools(
           .enum(['ALL', 'IMAGE', 'BINARY'])
           .optional()
           .describe('Restrict to images or to non-image files.'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ folder_id, kind }) =>
       run(async () => {
@@ -231,13 +239,14 @@ export function registerAssetTools(
         'Lists the folders directly under an asset folder. Folder 0 is the ' +
         'root. Wiki.js returns one level at a time, so a deep tree needs one ' +
         'call per level.',
-      inputSchema: {
+      inputSchema: z.object({
         parent_folder_id: idParam
           .or(z.literal(0))
           .optional()
           .describe('Parent folder id. 0 (default) is the root.'),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: marked(),
     },
     async ({ parent_folder_id }) =>
       run(async () => {
@@ -271,7 +280,7 @@ export function registerAssetTools(
         'that runs for every reader. Note that Wiki.js 2.x has no GraphQL ' +
         'mutation for uploads at all — this uses the editor’s own route, which ' +
         'is undocumented and could change in a future Wiki.js release.',
-      inputSchema: {
+      inputSchema: z.object({
         filename: filenameParam,
         content_base64: z
           .string()
@@ -282,8 +291,9 @@ export function registerAssetTools(
           .or(z.literal(0))
           .optional()
           .describe('Target folder id. 0 (default) is the root.'),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ filename, content_base64, folder_id }) =>
       run(async () => {
@@ -335,7 +345,7 @@ export function registerAssetTools(
       description:
         'Creates a folder in the asset store. The slug is what appears in the ' +
         'URL of every file inside it.',
-      inputSchema: {
+      inputSchema: z.object({
         parent_folder_id: idParam
           .or(z.literal(0))
           .optional()
@@ -357,8 +367,9 @@ export function registerAssetTools(
           .max(255)
           .optional()
           .describe('Display name (defaults to the slug).'),
-      },
-      annotations: { idempotentHint: false },
+      }),
+      annotations: WRITE,
+      outputSchema: plain(),
     },
     async ({ parent_folder_id, slug, name }) =>
       run(async () => {
@@ -381,7 +392,9 @@ export function registerAssetTools(
           objectOf(data.assets, 'the asset mutation').createFolder,
           'create_asset_folder'
         );
-        return textResult(`Created asset folder "${slug}".`);
+        return sentenceResult(`Created asset folder "${slug}".`, {
+          created_folder: slug,
+        });
       })
   );
 
@@ -392,14 +405,15 @@ export function registerAssetTools(
       description:
         'Renames an asset. Pages embedding it by its old URL will break — ' +
         'Wiki.js does not rewrite them.',
-      inputSchema: {
+      inputSchema: z.object({
         asset_id: idParam.describe('Asset id from list_assets.'),
         filename: filenameParam.describe('New file name, including extension.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { idempotentHint: true },
+      }),
+      annotations: WRITE_IDEMPOTENT,
+      outputSchema: plain(),
     },
-    async ({ asset_id, filename, confirm_token }) =>
+    async ({ asset_id, filename, confirm_token }, mcp) =>
       run(async () => {
         if (scope.active) {
           await assertFolderWithinScope(
@@ -410,6 +424,9 @@ export function registerAssetTools(
           );
         }
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'rename_asset',
@@ -428,7 +445,13 @@ export function registerAssetTools(
               objectOf(data.assets, 'the asset mutation').renameAsset,
               'rename_asset'
             );
-            return textResult(`Renamed asset ${asset_id} to "${filename}".`);
+            return sentenceResult(
+              `Renamed asset ${asset_id} to "${filename}".`,
+              {
+                asset_id,
+                filename,
+              }
+            );
           }
         );
       })
@@ -441,13 +464,14 @@ export function registerAssetTools(
       description:
         'Deletes an asset permanently. Any page embedding it will show a broken ' +
         'image or a dead link. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         asset_id: idParam.describe('Asset id from list_assets.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ asset_id, confirm_token }) =>
+    async ({ asset_id, confirm_token }, mcp) =>
       run(async () => {
         if (scope.active) {
           await assertFolderWithinScope(
@@ -458,6 +482,9 @@ export function registerAssetTools(
           );
         }
         return guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'delete_asset',
@@ -475,7 +502,9 @@ export function registerAssetTools(
               objectOf(data.assets, 'the asset mutation').deleteAsset,
               'delete_asset'
             );
-            return textResult(`Deleted asset ${asset_id}.`);
+            return sentenceResult(`Deleted asset ${asset_id}.`, {
+              deleted_asset_id: asset_id,
+            });
           }
         );
       })

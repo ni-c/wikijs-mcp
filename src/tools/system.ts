@@ -1,11 +1,13 @@
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
+import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, textResult } from '../result.js';
+import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -22,7 +24,7 @@ import type { ToolContext } from './context.js';
  */
 export function registerSystemTools(
   server: McpServer,
-  { api, confirmations, readOnly }: ToolContext
+  { api, approval, confirmations, readOnly }: ToolContext
 ): void {
   server.registerTool(
     'get_site_info',
@@ -34,8 +36,9 @@ export function registerSystemTools(
         'call to make when something is not behaving — it proves the URL and ' +
         'the API key work at all. Fields describing the host filesystem and ' +
         'database host are deliberately not requested.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({}),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -58,7 +61,7 @@ export function registerSystemTools(
         'checking once per wiki: the locale is part of a page’s identity, and ' +
         'every page tool here falls back to WIKIJS_LOCALE, so a wiki running on ' +
         '"de" needs that set or nothing will be found.',
-      inputSchema: {
+      inputSchema: z.object({
         installed_only: z
           .boolean()
           .optional()
@@ -66,8 +69,9 @@ export function registerSystemTools(
             'Only locales actually installed (default true). Wiki.js lists ' +
               'every locale it could download otherwise — over a hundred.'
           ),
-      },
-      annotations: { readOnlyHint: true },
+      }),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async ({ installed_only }) =>
       run(async () => {
@@ -102,8 +106,9 @@ export function registerSystemTools(
         'The sidebar navigation as configured, per locale. This is curated by ' +
         'hand and is not the page tree — get_page_tree is what reflects the ' +
         'pages that actually exist.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({}),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -128,8 +133,9 @@ export function registerSystemTools(
         'search_pages: the default "Database - Basic" indexes only titles and ' +
         'descriptions, so nothing written inside a page is searchable until a ' +
         'real engine is configured and the index rebuilt.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({}),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -160,8 +166,9 @@ export function registerSystemTools(
         'revoked, plus whether API access is switched on at all. Wiki.js stores ' +
         'only a truncated form of each key and never returns the secret, so ' +
         'nothing here can be used to authenticate.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({}),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -182,8 +189,9 @@ export function registerSystemTools(
         'The configured storage backends — git mirrors, S3 buckets, local ' +
         'file dumps — with their sync status and last error. Credentials in ' +
         'their configuration are redacted.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true },
+      inputSchema: z.object({}),
+      annotations: READ_ONLY,
+      outputSchema: plain(),
     },
     async () =>
       run(async () => {
@@ -209,15 +217,19 @@ export function registerSystemTools(
         'Revokes an API key immediately and for good — Wiki.js has no way to ' +
         'un-revoke one. Note that this can revoke the key this server is using, ' +
         'which would cut its own connection. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         key_id: idParam.describe('Key id from list_api_keys.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ key_id, confirm_token }) =>
+    async ({ key_id, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'revoke_api_key',
@@ -238,7 +250,9 @@ export function registerSystemTools(
                 .revokeApiKey,
               'revoke_api_key'
             );
-            return textResult(`Revoked API key ${key_id}.`);
+            return sentenceResult(`Revoked API key ${key_id}.`, {
+              revoked_key_id: key_id,
+            });
           }
         )
       )
@@ -252,17 +266,21 @@ export function registerSystemTools(
         'Switches Wiki.js’ whole API on or off. Turning it off disables every ' +
         'API key at once, including this server’s — after which the only way ' +
         'back is the web administration UI. Requires a confirmation token.',
-      inputSchema: {
+      inputSchema: z.object({
         enabled: z
           .boolean()
           .describe('True to enable the API, false to disable it.'),
         confirm_token: confirmTokenParam.optional(),
-      },
-      annotations: { destructiveHint: true, idempotentHint: false },
+      }),
+      annotations: DESTRUCTIVE,
+      outputSchema: plain(),
     },
-    async ({ enabled, confirm_token }) =>
+    async ({ enabled, confirm_token }, mcp) =>
       run(async () =>
         guarded(
+          server,
+          mcp,
+          approval,
           confirmations,
           {
             tool: 'set_api_state',
@@ -282,8 +300,9 @@ export function registerSystemTools(
                 .setApiState,
               'set_api_state'
             );
-            return textResult(
-              `The Wiki.js API is now ${enabled ? 'enabled' : 'disabled'}.`
+            return sentenceResult(
+              `The Wiki.js API is now ${enabled ? 'enabled' : 'disabled'}.`,
+              { api_enabled: enabled }
             );
           }
         )

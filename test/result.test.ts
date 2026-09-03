@@ -14,6 +14,7 @@ import {
   budgetedUntrustedResult,
   errorResult,
   jsonResult,
+  ResultTooLargeError,
   MAX_RESULT_BYTES,
   operationHint,
   run,
@@ -22,8 +23,15 @@ import {
   untrustedResult,
 } from '../src/result.js';
 
-const textOf = (result: { content: Array<{ text?: string }> }): string =>
-  result.content.map((part) => part.text ?? '').join('\n');
+// `run` answers with `CallToolResult | InputRequiredResult`, and only the
+// first half carries `content`. Typing the parameter off `run` itself keeps
+// both halves acceptable — a bare `{ content: … }` shape is one an input
+// request overlaps in no property at all — and the cast then says out loud
+// that every call in this file is on the result half.
+const textOf = (result: Awaited<ReturnType<typeof run>>): string =>
+  ((result as { content?: unknown }).content as Array<{ text?: string }>)
+    .map((part) => part.text ?? '')
+    .join('\n');
 
 describe('result shapes', () => {
   it('marks an error result', () => {
@@ -154,13 +162,13 @@ describe('budgetedJson', () => {
   });
 
   it('gives up in a readable way on something with nothing left to cut', () => {
-    const parsed = JSON.parse(
-      budgetedJson('z'.repeat(MAX_RESULT_BYTES + 10))
-    ) as {
-      error?: string;
-    };
     // A bare oversized string has neither a shortenable field nor an array.
-    expect(parsed.error ?? '').toContain('result size budget');
+    // The give-up used to be an envelope carrying an `error` field, which is a
+    // different shape from what a tool declares it returns — and the SDK
+    // refuses that. So it throws, and `run` turns it into an error result.
+    expect(() => budgetedJson('z'.repeat(MAX_RESULT_BYTES + 10))).toThrow(
+      ResultTooLargeError
+    );
   });
 
   it('redacts before it budgets, so a secret cannot survive truncation', () => {
@@ -177,6 +185,18 @@ describe('budgetedJson', () => {
 });
 
 describe('sanitizeErrorBody', () => {
+  it('drops markup that does not open with a doctype or <html>', () => {
+    // A WAF block page can open with a comment, and an upstream that answers
+    // errors in XML is exactly as useless to the model as one that answers in
+    // HTML. The old check required a doctype or an <html> tag first and let
+    // both of these through.
+    expect(
+      sanitizeErrorBody('<?xml version="1.0"?><error>denied</error>')
+    ).toBe('(HTML error page omitted)');
+    expect(
+      sanitizeErrorBody('<!-- blocked by policy -->\n<html>x</html>')
+    ).toBe('(HTML error page omitted)');
+  });
   it('drops an HTML error page, which is pure noise', () => {
     expect(sanitizeErrorBody('<!doctype html><html>...</html>')).toBe(
       '(HTML error page omitted)'
