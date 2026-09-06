@@ -1,16 +1,19 @@
 # wikijs-mcp
 
+<!-- badges: start -->
+
 [![CI](https://img.shields.io/github/actions/workflow/status/ni-c/wikijs-mcp/ci.yml?branch=main&label=CI)](https://github.com/ni-c/wikijs-mcp/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ni-c/wikijs-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/ni-c/wikijs-mcp)
+<a href="https://socket.dev/npm/package/@ni-c/wikijs-mcp"><img src="https://socket.dev/api/badge/npm/package/@ni-c/wikijs-mcp" alt="Socket supply-chain report" height="20"></a>
+[![Glama score](https://glama.ai/mcp/servers/ni-c/wikijs-mcp/badges/score.svg)](https://glama.ai/mcp/servers/ni-c/wikijs-mcp)
+<br>
 [![npm version](https://img.shields.io/npm/v/%40ni-c%2Fwikijs-mcp)](https://www.npmjs.com/package/@ni-c/wikijs-mcp)
-[![npm downloads](https://img.shields.io/npm/dm/%40ni-c%2Fwikijs-mcp)](https://www.npmjs.com/package/@ni-c/wikijs-mcp)
-[![node](https://img.shields.io/node/v/%40ni-c%2Fwikijs-mcp)](https://nodejs.org)
-[![license](https://img.shields.io/npm/l/%40ni-c%2Fwikijs-mcp)](LICENSE)
-[![container](https://img.shields.io/badge/ghcr.io-ni--c%2Fwikijs--mcp-blue)](https://github.com/ni-c/wikijs-mcp/pkgs/container/wikijs-mcp)
-[![docs](https://img.shields.io/badge/docs-wikijs--mcp.ni--c.de-informational)](https://wikijs-mcp.ni-c.de)
-[![HTTP • via mcp-hub](https://img.shields.io/badge/HTTP-via%20mcp--hub-6f42c1)](https://mcp-hub.ni-c.de)
-[![Glama](https://glama.ai/mcp/servers/ni-c/wikijs-mcp/badges/score.svg)](https://glama.ai/mcp/servers/ni-c/wikijs-mcp)
+[![container image](https://img.shields.io/badge/ghcr.io-ni--c%2Fwikijs--mcp-4f46e5?logo=docker&logoColor=white)](https://github.com/ni-c/wikijs-mcp/pkgs/container/wikijs-mcp)
+[![HTTP via mcp-hub](https://img.shields.io/badge/HTTP-via%20mcp--hub-4f46e5?logo=modelcontextprotocol&logoColor=white)](https://mcp-hub.ni-c.de)
+<br>
+[![docs](https://img.shields.io/badge/docs-wikijs--mcp.ni--c.de-4f46e5?logo=readthedocs&logoColor=white)](https://wikijs-mcp.ni-c.de)
 [![sponsor](https://img.shields.io/badge/sponsor-ni--c-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/ni-c)
+<!-- badges: end -->
 
 <!-- The opening is three paragraphs in a fixed shape: what it IS, what it LETS A
      CLIENT DO, and how to make it smaller. Keep "Lets MCP clients like Claude Code,
