@@ -1,9 +1,3 @@
-<!--
-  GENERATED FILE — do not edit by hand.
-  Regenerate with: npm run build && npm run docs:tools
-  The CI test job fails when this file is out of date.
--->
-
 # Tool reference
 
 All 62 tools: 27 read, 35 write.

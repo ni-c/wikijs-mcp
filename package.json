@@ -50,9 +50,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run build",
     "assets": "svg-asset-set",
-    "assets:check": "svg-asset-set --check",
-    "docs:tools": "node scripts/gen-tools-doc.mjs",
-    "docs:tools:check": "node scripts/gen-tools-doc.mjs --check"
+    "assets:check": "svg-asset-set --check"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
