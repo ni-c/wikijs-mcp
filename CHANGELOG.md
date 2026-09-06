@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      last in the file so the link definitions come along. -->
 <!-- #region changelog -->
 
+## [Unreleased]
+
+### Changed
+
+- The loopback check behind the plain-HTTP warning comes from
+  `mcp-internal-hosts` instead of a copy in `config.ts`. Same classifier the
+  rest of the family uses, same behaviour — one fewer place to keep 25 lines of
+  hand-written IPv6 normalisation correct.
+
 ## [0.2.0] - 2026-09-03
 
 ### Added
