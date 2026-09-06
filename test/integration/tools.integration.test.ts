@@ -96,9 +96,7 @@ describe('the read surface', () => {
     await asking.call('search_tags', { query: 'do' });
     await asking.call('list_asset_folders', {});
     await asking.call('list_assets', {});
-    expect(await asking.call('list_users', {})).toContain(
-      'admin@sandbox.local'
-    );
+    expect(await asking.call('list_users', {})).toContain('admin@example.test');
     await asking.call('search_users', { query: 'admin' });
     await asking.call('get_user', { user_id: 1 });
     await asking.call('list_groups', {});

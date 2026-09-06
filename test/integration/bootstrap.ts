@@ -13,7 +13,7 @@ import { assertLoopback, waitForHttp } from 'mcp-integration-harness';
  * order is the part that is not documented anywhere.
  */
 
-export const ADMIN_EMAIL = 'admin@sandbox.local';
+export const ADMIN_EMAIL = 'admin@example.test';
 export const ADMIN_PASSWORD = 'sandbox-admin-not-a-secret';
 
 /** The marker `grep_pages` looks for, kept here so the seed owns it. */
