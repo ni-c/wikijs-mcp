@@ -19,8 +19,15 @@ import { createHash } from 'node:crypto';
  * meaning. Anything free-form or list-shaped goes through here first.
  */
 export function fingerprint(value: unknown): string {
+  // `?? null` rather than passing the value straight in: `JSON.stringify`
+  // answers `undefined` for `undefined`, and `update` then throws
+  // ERR_INVALID_ARG_TYPE. No caller reaches that today — every optional
+  // argument is guarded at the call site — but the docstring above invites the
+  // next list-shaped field through here, and an optional one would take the
+  // tool down with a TypeError instead of producing a key. The same builder in
+  // hetzner-dns-mcp already guards this way.
   return createHash('sha256')
-    .update(typeof value === 'string' ? value : JSON.stringify(value))
+    .update(typeof value === 'string' ? value : JSON.stringify(value ?? null))
     .digest('hex')
     .slice(0, 16);
 }
