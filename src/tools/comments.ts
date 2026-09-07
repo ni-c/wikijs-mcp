@@ -22,7 +22,7 @@ import * as gql from '../gql/admin.js';
 import * as pageGql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { assertWithinScope, PathScopeError } from '../paths.js';
+import { assertWithinScope, describeScope, PathScopeError } from '../paths.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -41,7 +41,7 @@ function assertCommentScopable(
   if (!scope.active) return;
   throw new PathScopeError(
     `${tool} cannot be confined to WIKIJS_ALLOWED_PATHS ` +
-      `(${scope.prefixes.join(', ')}): Wiki.js does not report which page a ` +
+      `(${describeScope(scope)}): Wiki.js does not report which page a ` +
       'comment belongs to, so this server cannot tell whether it is inside the ' +
       'allowed area. Unset the variable to manage comments.'
   );

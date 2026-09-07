@@ -1,5 +1,7 @@
 import { internalHostKind } from 'mcp-internal-hosts';
 
+import { stripTrailingSlashes } from './paths.js';
+
 /**
  * Locale used when a tool does not name one.
  *
@@ -91,11 +93,52 @@ export function parseElicitation(raw: string | undefined): boolean {
   const value = raw?.trim().toLowerCase();
   if (value === undefined || value === '' || value === 'true') return true;
   if (value === 'false') return false;
+  // Described, never quoted: this variable sits in the same block as the
+  // token, and a token pasted into the wrong line is exactly what "neither
+  // true nor false" looks like.
   console.error(
-    `wikijs-mcp: ELICITATION must be "true" or "false" — got "${raw}". ` +
+    `wikijs-mcp: ELICITATION must be "true" or "false" — got a ` +
+      `${raw?.length ?? 0}-character value that is neither. ` +
       'Refusing to start rather than guess.'
   );
   process.exit(1);
+}
+
+/** Shortest value that could be a Wiki.js API key; the real ones are JWTs of several hundred characters. */
+const MIN_TOKEN_LENGTH = 8;
+/** Longest value this server will put into a header. */
+const MAX_TOKEN_LENGTH = 8192;
+
+/**
+ * Why a token cannot be used, or `undefined` when it can.
+ *
+ * Shape only — nothing here can tell a valid key from a revoked one. What it
+ * can tell is the token that was pasted with a line break in the middle, or
+ * with a stray character outside ASCII, which the HTTP layer refuses at the
+ * first request with a `TypeError` that quotes the whole header value. The
+ * message never carries the value; it names the variable, the length and the
+ * position.
+ */
+export function tokenProblem(token: string): string | undefined {
+  if (token.length < MIN_TOKEN_LENGTH) {
+    return (
+      `is ${token.length} characters long; a Wiki.js API key is a JWT of ` +
+      'several hundred characters. Copy it from Administration → API Access.'
+    );
+  }
+  if (token.length > MAX_TOKEN_LENGTH) {
+    return `is ${token.length} characters long, above the ${MAX_TOKEN_LENGTH} this server will send.`;
+  }
+  for (let i = 0; i < token.length; i++) {
+    const code = token.charCodeAt(i);
+    if (code < 0x21 || code > 0x7e) {
+      return (
+        `contains a character outside printable ASCII at position ${i + 1} of ` +
+        `${token.length} — a line break from a wrapped paste is the usual cause.`
+      );
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -112,7 +155,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // every other Wiki.js MCP server reads WIKIJS_API_KEY — so moving to this one
   // must not be an environment rewrite. WIKIJS_TOKEN is the documented name
   // because that is what the neighbouring servers use.
-  const token = env.WIKIJS_TOKEN ?? env.WIKIJS_API_KEY;
+  // Trimmed: `$(cat token)` in a shell leaves a newline on the end, and that
+  // newline is a header value the HTTP layer refuses. An empty result counts
+  // as unset.
+  const token = (env.WIKIJS_TOKEN ?? env.WIKIJS_API_KEY)?.trim() || undefined;
   const locale = env.WIKIJS_LOCALE?.trim() || DEFAULT_LOCALE;
   // The two switches are parsed differently on purpose, and the difference is
   // which way a typo should fall. WIKIJS_INSECURE_TLS *removes* a protection,
@@ -137,6 +183,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // After the deletes, deliberately: this one can exit the process, and an exit
   // above would leave the token in the environment for whatever runs next.
   const elicitation = parseElicitation(env.ELICITATION);
+
+  // Also after the deletes, for the same reason. A token this server cannot
+  // send is a token that would otherwise be quoted back by the HTTP layer on
+  // the first call — see `assertHeaderValue` in api.ts for the check at the header itself.
+  const problem = token === undefined ? undefined : tokenProblem(token);
+  if (problem !== undefined) {
+    console.error(`wikijs-mcp: WIKIJS_TOKEN ${problem}`);
+    process.exit(1);
+  }
 
   const missing = [!url && 'WIKIJS_URL', !token && 'WIKIJS_TOKEN'].filter(
     (v): v is string => Boolean(v)
@@ -170,8 +225,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     process.exit(1);
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    // The scheme is not printed. A hexadecimal key with a colon after it is a
+    // URL whose scheme is the key, and this line used to print it in full.
     console.error(
-      `wikijs-mcp: WIKIJS_URL must use http:// or https:// (got ${parsed.protocol})`
+      'wikijs-mcp: WIKIJS_URL must use http:// or https:// — the value has ' +
+        `a different scheme (${parsed.protocol.length - 1} characters long).`
     );
     process.exit(1);
   }
@@ -191,9 +249,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   // From `parsed`, not the raw value: a query or fragment would otherwise
   // survive the slash trim and end up glued in front of /graphql.
-  base.url = `${parsed.origin}${parsed.pathname}`
-    .replace(/\/+$/, '')
-    .replace(/\/graphql$/, '');
+  base.url = stripTrailingSlashes(`${parsed.origin}${parsed.pathname}`).replace(
+    /\/graphql$/,
+    ''
+  );
   return base;
 }
 

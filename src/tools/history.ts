@@ -19,7 +19,7 @@ import { DESTRUCTIVE, READ_ONLY } from './annotations.js';
 import { unifiedDiff } from '../diff.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
+import { idOf, listOf, objectOf } from '../normalize.js';
 import { assertWithinScope } from '../paths.js';
 import type { ToolContext } from './context.js';
 
@@ -98,6 +98,7 @@ export function registerHistoryTools(
           .number()
           .int()
           .min(0)
+          .max(1_000_000)
           .optional()
           .describe('Zero-based page of results (default 0).'),
         page_size: z
@@ -114,7 +115,7 @@ export function registerHistoryTools(
     async ({ page_id, path, locale, page, page_size }) =>
       run(async () => {
         const target = await resolveId(api, { page_id, path, locale });
-        const id = target.id as number;
+        const id = idOf(target, 'the page');
         const data = await api.execute('list_page_history', gql.PAGE_HISTORY, {
           id,
           offsetPage: page ?? 0,

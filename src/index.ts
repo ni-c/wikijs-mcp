@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
 import { loadConfig, missingConfigKeys } from './config.js';
-import { PathScopeError } from './paths.js';
+import { describeAllowedPaths, PathScopeError } from './paths.js';
 import { createServer } from './server.js';
 import { ToolFilterError } from 'mcp-tool-allowlist';
 
@@ -33,8 +33,11 @@ async function main(): Promise<void> {
     );
   }
   if (config.allowedPaths !== undefined && config.allowedPaths.trim() !== '') {
+    // Path-shaped entries are printed; anything else is described by its
+    // length. This variable sits one line below the token in every compose
+    // file, and a token pasted here is a valid prefix.
     console.error(
-      `wikijs-mcp: writes are confined to WIKIJS_ALLOWED_PATHS (${config.allowedPaths}).`
+      `wikijs-mcp: writes are confined to WIKIJS_ALLOWED_PATHS (${describeAllowedPaths(config.allowedPaths)}).`
     );
   }
 

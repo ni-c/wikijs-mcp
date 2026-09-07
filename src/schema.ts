@@ -8,12 +8,19 @@ import { z } from 'zod';
  * disagree about what one is.
  */
 
-/** Wiki.js ids are 32-bit signed integers in Postgres; keep them sane regardless. */
+/**
+ * Wiki.js ids are 32-bit signed integers: `Int` in its GraphQL schema and
+ * `increments()` in its Postgres tables. The bound is that, not "safe integer"
+ * — an id past it was refused by GraphQL with a validation error that named
+ * the number and nothing else.
+ */
+export const MAX_ID = 2_147_483_647;
+
 export const idParam = z
   .number()
   .int()
   .min(1, 'ids start at 1')
-  .max(Number.MAX_SAFE_INTEGER)
+  .max(MAX_ID, 'a Wiki.js id is a 32-bit integer')
   .describe('Numeric Wiki.js id.');
 
 /**
@@ -123,6 +130,9 @@ export const descriptionParam = z
   .max(255)
   .describe('Short page description, shown in listings and search results.');
 
+/** Longest page body this server accepts, in characters. */
+export const MAX_CONTENT_LENGTH = 5_000_000;
+
 /**
  * Page body.
  *
@@ -133,7 +143,7 @@ export const contentParam = z
   .string()
   .min(1, 'Wiki.js refuses a page with empty content')
   .max(
-    5_000_000,
+    MAX_CONTENT_LENGTH,
     'a page body above 5 MB is almost certainly a mistake; Wiki.js will struggle with it too'
   )
   .describe('Full page body, in the page’s content format.');
@@ -151,17 +161,27 @@ export const editorParam = z
       'HTML, "code" for raw HTML, "asciidoc" for AsciiDoc.'
   );
 
-/** One find-and-replace edit. */
+/**
+ * One find-and-replace edit.
+ *
+ * Both halves are bounded by what a page body may be: an anchor longer than
+ * the page cannot match, and a replacement longer than the page ceiling
+ * cannot be written.
+ */
 export const editParam = z
   .object({
     old_text: z
       .string()
       .min(1)
+      .max(MAX_CONTENT_LENGTH)
       .describe(
         'Exact text to replace. Must appear exactly once in the page — include ' +
           'surrounding lines until it is unique.'
       ),
-    new_text: z.string().describe('Replacement text. May be empty to delete.'),
+    new_text: z
+      .string()
+      .max(MAX_CONTENT_LENGTH)
+      .describe('Replacement text. May be empty to delete.'),
   })
   .describe('A single surgical edit.');
 
@@ -213,8 +233,8 @@ export const patternParam = z
   .refine(
     (value) => {
       try {
-        new RegExp(value);
-        return true;
+        const compiled = new RegExp(value);
+        return compiled instanceof RegExp;
       } catch {
         return false;
       }

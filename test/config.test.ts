@@ -17,7 +17,7 @@ afterEach(() => {
 
 const complete = {
   WIKIJS_URL: 'https://wiki.example.com',
-  WIKIJS_TOKEN: 'secret',
+  WIKIJS_TOKEN: 'secret-key-0',
 };
 
 describe('ELICITATION', () => {
@@ -82,7 +82,7 @@ describe('loadConfig', () => {
     const config = loadConfig(
       env({
         WIKIJS_URL: 'https://wiki.example.net',
-        WIKIJS_TOKEN: 'secret',
+        WIKIJS_TOKEN: 'secret-key-0',
         WIKIJS_LOCALE: 'de',
         WIKIJS_READ_ONLY: 'true',
         WIKIJS_INSECURE_TLS: 'true',
@@ -93,7 +93,7 @@ describe('loadConfig', () => {
     );
     expect(config).toMatchObject({
       url: 'https://wiki.example.net',
-      token: 'secret',
+      token: 'secret-key-0',
       locale: 'de',
       readOnly: true,
       insecureTls: true,
@@ -105,27 +105,30 @@ describe('loadConfig', () => {
 
   it('accepts WIKIJS_API_KEY as an alias, so a migration is not an env rewrite', () => {
     const config = loadConfig(
-      env({ WIKIJS_URL: 'https://wiki.example.net', WIKIJS_API_KEY: 'legacy' })
+      env({
+        WIKIJS_URL: 'https://wiki.example.net',
+        WIKIJS_API_KEY: 'legacy-key-0',
+      })
     );
-    expect(config.token).toBe('legacy');
+    expect(config.token).toBe('legacy-key-0');
   });
 
   it('prefers WIKIJS_TOKEN when both are set', () => {
     const config = loadConfig(
       env({
         WIKIJS_URL: 'https://wiki.example.net',
-        WIKIJS_TOKEN: 'primary',
-        WIKIJS_API_KEY: 'legacy',
+        WIKIJS_TOKEN: 'primary-key-0',
+        WIKIJS_API_KEY: 'legacy-key-0',
       })
     );
-    expect(config.token).toBe('primary');
+    expect(config.token).toBe('primary-key-0');
   });
 
   it('deletes both credential variables from the environment', () => {
     const environment = env({
       WIKIJS_URL: 'https://wiki.example.net',
-      WIKIJS_TOKEN: 'secret',
-      WIKIJS_API_KEY: 'legacy',
+      WIKIJS_TOKEN: 'secret-key-0',
+      WIKIJS_API_KEY: 'legacy-key-0',
     });
     loadConfig(environment);
     expect(environment.WIKIJS_TOKEN).toBeUndefined();
@@ -134,8 +137,8 @@ describe('loadConfig', () => {
 
   it('deletes the credentials even when the URL is missing and it returns early', () => {
     const environment = env({
-      WIKIJS_TOKEN: 'secret',
-      WIKIJS_API_KEY: 'legacy',
+      WIKIJS_TOKEN: 'secret-key-0',
+      WIKIJS_API_KEY: 'legacy-key-0',
     });
     vi.spyOn(console, 'error').mockImplementation(() => {});
     loadConfig(environment);
@@ -145,14 +148,15 @@ describe('loadConfig', () => {
 
   it('falls back to the default locale, including for an empty value', () => {
     expect(
-      loadConfig(env({ WIKIJS_URL: 'https://w.example', WIKIJS_TOKEN: 't' }))
-        .locale
+      loadConfig(
+        env({ WIKIJS_URL: 'https://w.example', WIKIJS_TOKEN: 'test-api-key' })
+      ).locale
     ).toBe(DEFAULT_LOCALE);
     expect(
       loadConfig(
         env({
           WIKIJS_URL: 'https://w.example',
-          WIKIJS_TOKEN: 't',
+          WIKIJS_TOKEN: 'test-api-key',
           WIKIJS_LOCALE: '   ',
         })
       ).locale
@@ -168,7 +172,7 @@ describe('loadConfig', () => {
       const config = loadConfig(
         env({
           WIKIJS_URL: 'https://w.example',
-          WIKIJS_TOKEN: 't',
+          WIKIJS_TOKEN: 'test-api-key',
           WIKIJS_READ_ONLY: raw,
         })
       );
@@ -181,7 +185,7 @@ describe('loadConfig', () => {
       const config = loadConfig(
         env({
           WIKIJS_URL: 'https://w.example',
-          WIKIJS_TOKEN: 't',
+          WIKIJS_TOKEN: 'test-api-key',
           WIKIJS_READ_ONLY: raw,
         })
       );
@@ -196,7 +200,7 @@ describe('loadConfig', () => {
       const config = loadConfig(
         env({
           WIKIJS_URL: 'https://w.example',
-          WIKIJS_TOKEN: 't',
+          WIKIJS_TOKEN: 'test-api-key',
           WIKIJS_INSECURE_TLS: raw,
         })
       );
@@ -206,7 +210,7 @@ describe('loadConfig', () => {
       loadConfig(
         env({
           WIKIJS_URL: 'https://w.example',
-          WIKIJS_TOKEN: 't',
+          WIKIJS_TOKEN: 'test-api-key',
           WIKIJS_INSECURE_TLS: 'true',
         })
       ).insecureTls
@@ -225,12 +229,18 @@ describe('loadConfig', () => {
   it('strips trailing slashes and a /graphql suffix', () => {
     expect(
       loadConfig(
-        env({ WIKIJS_URL: 'https://w.example/graphql', WIKIJS_TOKEN: 't' })
+        env({
+          WIKIJS_URL: 'https://w.example/graphql',
+          WIKIJS_TOKEN: 'test-api-key',
+        })
       ).url
     ).toBe('https://w.example');
     expect(
       loadConfig(
-        env({ WIKIJS_URL: 'https://w.example/wiki//', WIKIJS_TOKEN: 't' })
+        env({
+          WIKIJS_URL: 'https://w.example/wiki//',
+          WIKIJS_TOKEN: 'test-api-key',
+        })
       ).url
     ).toBe('https://w.example/wiki');
   });
@@ -238,7 +248,10 @@ describe('loadConfig', () => {
   it('drops a query string, which would otherwise land in front of /graphql', () => {
     expect(
       loadConfig(
-        env({ WIKIJS_URL: 'https://w.example/?x=1', WIKIJS_TOKEN: 't' })
+        env({
+          WIKIJS_URL: 'https://w.example/?x=1',
+          WIKIJS_TOKEN: 'test-api-key',
+        })
       ).url
     ).toBe('https://w.example');
   });
@@ -270,11 +283,16 @@ describe('loadConfig', () => {
       throw new Error(`exit:${code}`);
     }) as never);
     expect(() =>
-      loadConfig(env({ WIKIJS_URL: 'ftp://w.example', WIKIJS_TOKEN: 't' }))
+      loadConfig(
+        env({ WIKIJS_URL: 'ftp://w.example', WIKIJS_TOKEN: 'test-api-key' })
+      )
     ).toThrow('exit:1');
     expect(() =>
       loadConfig(
-        env({ WIKIJS_URL: 'https://user:pass@w.example', WIKIJS_TOKEN: 't' })
+        env({
+          WIKIJS_URL: 'https://user:pass@w.example',
+          WIKIJS_TOKEN: 'test-api-key',
+        })
       )
     ).toThrow('exit:1');
     expect(exit).toHaveBeenCalledTimes(2);
@@ -282,10 +300,15 @@ describe('loadConfig', () => {
 
   it('warns about plain http to a remote host but not to loopback', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    loadConfig(env({ WIKIJS_URL: 'http://127.0.0.1:3000', WIKIJS_TOKEN: 't' }));
+    loadConfig(
+      env({ WIKIJS_URL: 'http://127.0.0.1:3000', WIKIJS_TOKEN: 'test-api-key' })
+    );
     expect(error.mock.calls.flat().join(' ')).not.toContain('unencrypted');
     loadConfig(
-      env({ WIKIJS_URL: 'http://wiki.example.net', WIKIJS_TOKEN: 't' })
+      env({
+        WIKIJS_URL: 'http://wiki.example.net',
+        WIKIJS_TOKEN: 'test-api-key',
+      })
     );
     expect(error.mock.calls.flat().join(' ')).toContain('unencrypted');
   });
@@ -299,7 +322,7 @@ describe('loadConfig', () => {
     // ::ffff:127.0.0.1 to '[::ffff:7f00:1]'. The comparison this replaced
     // checked for a bare '::1' and so warned about every one of these.
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    loadConfig(env({ WIKIJS_URL: url, WIKIJS_TOKEN: 't' }));
+    loadConfig(env({ WIKIJS_URL: url, WIKIJS_TOKEN: 'test-api-key' }));
     expect(error.mock.calls.flat().join(' ')).not.toContain('unencrypted');
     error.mockRestore();
   });

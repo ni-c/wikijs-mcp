@@ -297,9 +297,9 @@ describe('the sweep knows which tools and arguments it is sweeping', () => {
         declared
       );
       expect(
-        Object.keys(testCase.vary).sort(),
+        Object.keys(testCase.vary).toSorted(),
         `${name}: every argument in base needs a different value`
-      ).toEqual(Object.keys(testCase.base).sort());
+      ).toEqual(Object.keys(testCase.base).toSorted());
     }
   });
 });

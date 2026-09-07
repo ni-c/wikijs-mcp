@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { plain } from '../output-schema.js';
+import { marked, plain } from '../output-schema.js';
 import {
   confirmTokenParam,
   emailParam,
@@ -18,8 +18,14 @@ import {
 import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
+import { idOf, listOf, objectOf } from '../normalize.js';
+import {
+  budgetedList,
+  budgetedUntrustedResult,
+  jsonResult,
+  run,
+  sentenceResult,
+} from '../result.js';
 import type { ToolContext } from './context.js';
 
 /**
@@ -30,6 +36,11 @@ import type { ToolContext } from './context.js';
  * weakens it, and resetting a password mails them — none of those are things a
  * model should be able to do on the strength of a single sentence in a page it
  * just read. `passwordRaw` is accepted but never returned or logged.
+ *
+ * The three read tools answer marked as untrusted, like the page tools do. A
+ * user's `name`, `location` and `jobTitle` are profile fields every account
+ * edits for itself, so a listing of users is a listing of text the wiki's
+ * users wrote — the same channel as a page body, with a different label.
  */
 export function registerUserTools(
   server: McpServer,
@@ -56,7 +67,7 @@ export function registerUserTools(
         limit: limitParam.optional(),
       }),
       annotations: READ_ONLY,
-      outputSchema: plain(),
+      outputSchema: marked(),
     },
     async ({ filter, order_by, limit }) =>
       run(async () => {
@@ -70,6 +81,7 @@ export function registerUserTools(
         );
         const shown = users.slice(0, limit ?? users.length);
         return budgetedList('users', shown, {
+          untrusted: true,
           extra: { total: users.length, shown: shown.length },
         });
       })
@@ -91,7 +103,7 @@ export function registerUserTools(
           .describe('Name or email fragment.'),
       }),
       annotations: READ_ONLY,
-      outputSchema: plain(),
+      outputSchema: marked(),
     },
     async ({ query }) =>
       run(async () => {
@@ -102,7 +114,10 @@ export function registerUserTools(
           objectOf(data.users, 'the user query').search,
           'users'
         );
-        return budgetedList('users', users, { extra: { count: users.length } });
+        return budgetedList('users', users, {
+          untrusted: true,
+          extra: { count: users.length },
+        });
       })
   );
 
@@ -116,7 +131,7 @@ export function registerUserTools(
         'is returned — Wiki.js does not expose one.',
       inputSchema: z.object({ user_id: idParam }),
       annotations: READ_ONLY,
-      outputSchema: plain(),
+      outputSchema: marked(),
     },
     async ({ user_id }) =>
       run(async () => {
@@ -127,7 +142,7 @@ export function registerUserTools(
           objectOf(data.users, 'the user query').single,
           `user ${user_id}`
         );
-        return jsonResult({ user });
+        return budgetedUntrustedResult({ user });
       })
   );
 
@@ -245,16 +260,30 @@ export function registerUserTools(
             const match = listOf(
               objectOf(found.users, 'the user query').search,
               'users'
-            ).find((u) => (u as { email?: string }).email === email);
+            ).find(
+              (u) =>
+                u !== null &&
+                typeof u === 'object' &&
+                (u as { email?: unknown }).email === email
+            );
 
+            // The id, beside the address this call was made with — not the
+            // record as found, whose `name` is a profile field and this
+            // result is unmarked.
             return jsonResult({
-              created: match ?? {
-                email,
-                note:
-                  'The account was created, but Wiki.js returned no id for it ' +
-                  'and it could not be found by email afterwards. Use ' +
-                  'search_users to locate it.',
-              },
+              created:
+                match === undefined
+                  ? {
+                      email,
+                      note:
+                        'The account was created, but Wiki.js returned no id for it ' +
+                        'and it could not be found by email afterwards. Use ' +
+                        'search_users to locate it.',
+                    }
+                  : {
+                      id: idOf(match as Record<string, unknown>, 'the user'),
+                      email,
+                    },
             });
           }
         )

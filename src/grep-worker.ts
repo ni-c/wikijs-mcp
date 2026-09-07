@@ -92,5 +92,7 @@ function run(request: GrepRequest): GrepResponse {
 }
 
 if (parentPort) {
-  parentPort.postMessage(run(workerData as GrepRequest));
+  // The second argument is worker_threads' transfer list, not a browser
+  // target origin: the result is structured-cloned, nothing is transferred.
+  parentPort.postMessage(run(workerData as GrepRequest), []);
 }

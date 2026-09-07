@@ -51,11 +51,11 @@ export function outlineOf(content: string): Heading[] {
       continue;
     }
 
-    const atx = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (atx?.[1] !== undefined && atx[2] !== undefined) {
+    const atx = atxHeading(line);
+    if (atx !== undefined) {
       headings.push({
-        level: atx[1].length,
-        title: atx[2].trim(),
+        level: atx.level,
+        title: atx.title,
         line: i + 1,
         offset,
       });
@@ -82,6 +82,43 @@ export function outlineOf(content: string): Heading[] {
   }
 
   return headings;
+}
+
+/** One character of the class `\s` matches — a single-character test, never a run. */
+function isSpace(char: string | undefined): boolean {
+  return char !== undefined && /\s/.test(char);
+}
+
+/**
+ * Parses an ATX heading line by hand.
+ *
+ * This used to be `/^(#{1,6})\s+(.+?)\s*#*\s*$/`, and that expression is cubic
+ * on a line that is mostly whitespace: the lazy `(.+?)` grows one character at
+ * a time, and at every step the tail `\s*#*\s*$` backtracks through the whole
+ * run of spaces. `# x` followed by four thousand spaces and a `y` cost 8.6
+ * seconds on the main thread — from `get_page` with `mode="outline"` or
+ * `section=`, on a line anybody with edit rights can write, and a page body may
+ * be five megabytes. Nothing in a wiki page is allowed to cost that.
+ *
+ * Same contract as the expression: one to six `#`, at least one whitespace
+ * character, at least one character of title, then optional trailing
+ * whitespace and closing hashes, which are dropped.
+ */
+function atxHeading(
+  line: string
+): { level: number; title: string } | undefined {
+  let level = 0;
+  while (level < line.length && line[level] === '#') level++;
+  if (level === 0 || level > 6) return undefined;
+  let start = level;
+  while (start < line.length && isSpace(line[start])) start++;
+  if (start === level || start >= line.length) return undefined;
+  let end = line.length;
+  while (end > start && isSpace(line[end - 1])) end--;
+  // At least one character of title survives, the way `(.+?)` guaranteed it.
+  while (end > start + 1 && line[end - 1] === '#') end--;
+  while (end > start + 1 && isSpace(line[end - 1])) end--;
+  return { level, title: line.slice(start, end).trim() };
 }
 
 /** Normalises a heading for comparison: case, punctuation and spacing all vary. */

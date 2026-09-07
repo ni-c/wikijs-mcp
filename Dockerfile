@@ -30,12 +30,19 @@ RUN apk add --no-cache --upgrade libcrypto3 libssl3
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-# The server reports its version from package.json at runtime.
-COPY package.json package-lock.json ./
+# The server reports its version from package.json at runtime. Only that file:
+# nothing reads the lockfile once the modules are in place.
+COPY package.json ./
 
 # The base image's bundled npm is a frequent source of HIGH findings and this
 # image never installs anything — remove it rather than carrying its CVEs.
-RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+# yarn (/opt/yarn-v*, two symlinks in /usr/local/bin) and corepack
+# (/usr/local/lib/node_modules/corepack) ship beside it and go for the same
+# reason. `docker run --rm --entrypoint sh <image> -c 'ls /opt
+# /usr/local/lib/node_modules; which yarn npm npx corepack'` is the check.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+    /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+    /usr/local/lib/node_modules/corepack /usr/local/bin/corepack
 
 # Ownership proof for the MCP Registry: must match server.json's name exactly.
 LABEL io.modelcontextprotocol.server.name="io.github.ni-c/wikijs-mcp"

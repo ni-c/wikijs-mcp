@@ -9,7 +9,12 @@ import * as adminGql from '../gql/admin.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { objectOf } from '../normalize.js';
-import { assertWithinScope, PathScopeError, type PathScope } from '../paths.js';
+import {
+  assertWithinScope,
+  describeScope,
+  PathScopeError,
+  type PathScope,
+} from '../paths.js';
 import { jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
@@ -63,7 +68,7 @@ function refuseWhenScoped(scope: PathScope, tool: string): void {
   if (!scope.active) return;
   throw new PathScopeError(
     `${tool} acts on every page in the wiki and cannot be confined to ` +
-      `WIKIJS_ALLOWED_PATHS (${scope.prefixes.join(', ')}). Unset it to run this.`
+      `WIKIJS_ALLOWED_PATHS (${describeScope(scope)}). Unset it to run this.`
   );
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@ni-c/wikijs-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "mcpName": "io.github.ni-c/wikijs-mcp",
   "description": "MCP server for Wiki.js: search, read and edit pages, and manage assets, users, groups and comments",
   "keywords": [
@@ -54,7 +54,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
-    "mcp-approval": "^0.8.0",
+    "mcp-approval": "^0.8.2",
     "mcp-internal-hosts": "^0.2.1",
     "mcp-tool-allowlist": "^0.2.1",
     "undici": "^8.10.0",
