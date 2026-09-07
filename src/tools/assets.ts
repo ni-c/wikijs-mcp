@@ -12,7 +12,7 @@ import {
 import { identifier } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
-import { listOf, objectOf } from '../normalize.js';
+import { idOf, listOf, objectOf } from '../normalize.js';
 import { assertWithinScope, type PathScope } from '../paths.js';
 import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam } from '../schema.js';
@@ -20,6 +20,43 @@ import type { ToolContext } from './context.js';
 
 /** Depth the folder walk gives up at, so a cycle cannot loop forever. */
 const MAX_FOLDER_DEPTH = 12;
+
+/**
+ * Folders the walk will list before it gives up, and the time it may take.
+ *
+ * The depth bound above is not a bound on work: a tree twelve levels deep may
+ * still be two thousand folders wide, and the walk listed every one of them —
+ * one request each for a folder, two for an asset, thirty seconds allowed per
+ * request — to answer a single `upload_asset`. A wiki with that many asset
+ * folders is unusual and not an attack, which is exactly the kind of instance
+ * that turns one tool call into an hour. Past either ceiling the walk refuses
+ * the way an unfound folder does: the scope cannot be decided, so the write
+ * does not happen.
+ */
+const SCOPE_WALK_MAX_FOLDERS = 256;
+const SCOPE_WALK_BUDGET_MS = 30_000;
+
+/** The ceilings of one walk, checked before every request it makes. */
+class ScopeWalk {
+  private readonly deadline = Date.now() + SCOPE_WALK_BUDGET_MS;
+  private listed = 0;
+
+  constructor(private readonly what: string) {}
+
+  /** Throws when the next listing would exceed either ceiling. */
+  next(): void {
+    this.listed++;
+    if (this.listed > SCOPE_WALK_MAX_FOLDERS || Date.now() > this.deadline) {
+      throw new Error(
+        `the asset folder tree is larger than this server will walk to place ` +
+          `${this.what} — more than ${SCOPE_WALK_MAX_FOLDERS} folders, or ` +
+          `${SCOPE_WALK_BUDGET_MS / 1000} seconds of listings — so it cannot ` +
+          'tell whether it is inside WIKIJS_ALLOWED_PATHS. Refusing rather ' +
+          'than guessing.'
+      );
+    }
+  }
+}
 
 /**
  * The slash-separated path of an asset folder, found by walking down from the
@@ -35,23 +72,25 @@ const MAX_FOLDER_DEPTH = 12;
  */
 async function folderPath(api: WikiJsApi, folderId: number): Promise<string> {
   if (folderId === 0) return '';
+  const walk = new ScopeWalk(`asset folder ${folderId}`);
   let level: Array<{ id: number; path: string }> = [{ id: 0, path: '' }];
   for (let depth = 0; depth < MAX_FOLDER_DEPTH; depth++) {
     const next: Array<{ id: number; path: string }> = [];
     for (const parent of level) {
+      walk.next();
       const data = await api.execute('asset scope', gql.LIST_ASSET_FOLDERS, {
         parentFolderId: parent.id,
       });
       const folders = listOf(
         objectOf(data.assets, 'the asset query').folders,
         'asset folders'
-      ) as Array<{ id: number; slug: string }>;
-      for (const folder of folders) {
-        const path = parent.path
-          ? `${parent.path}/${folder.slug}`
-          : folder.slug;
+      );
+      for (const entry of folders) {
+        const folder = objectOf(entry, 'an asset folder');
+        const slug = typeof folder.slug === 'string' ? folder.slug : '';
+        const path = parent.path ? `${parent.path}/${slug}` : slug;
         if (folder.id === folderId) return path;
-        next.push({ id: folder.id, path });
+        next.push({ id: idOf(folder, 'an asset folder'), path });
       }
     }
     if (next.length === 0) break;
@@ -87,10 +126,12 @@ async function assertFolderWithinScope(
 async function assetFolderId(api: WikiJsApi, assetId: number): Promise<number> {
   // Wiki.js cannot look an asset up by id, only list a folder's contents, so the
   // folder has to be found by scanning. Bounded by MAX_FOLDER_DEPTH as above.
+  const walk = new ScopeWalk(`asset ${assetId}`);
   const seen: number[] = [0];
   for (let depth = 0; depth < MAX_FOLDER_DEPTH && seen.length > 0; depth++) {
     const next: number[] = [];
     for (const folder of seen) {
+      walk.next();
       const listed = await api.execute('asset scope', gql.LIST_ASSETS, {
         folderId: folder,
         kind: 'ALL',
@@ -164,27 +205,33 @@ const ACTIVE_EXTENSIONS = /\.(svgz?|x?html?|xml|mhtml?)$/i;
  * `image/png` is still served as whatever Wiki.js decides, and the only thing
  * the claim achieves is to make the upload look harmless in a transcript.
  */
-const CONTENT_TYPES: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  avif: 'image/avif',
-  bmp: 'image/bmp',
-  ico: 'image/x-icon',
-  pdf: 'application/pdf',
-  txt: 'text/plain',
-  md: 'text/markdown',
-  csv: 'text/csv',
-  json: 'application/json',
-  zip: 'application/zip',
-  gz: 'application/gzip',
-};
+const CONTENT_TYPES = new Map<string, string>([
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['gif', 'image/gif'],
+  ['webp', 'image/webp'],
+  ['avif', 'image/avif'],
+  ['bmp', 'image/bmp'],
+  ['ico', 'image/x-icon'],
+  ['pdf', 'application/pdf'],
+  ['txt', 'text/plain'],
+  ['md', 'text/markdown'],
+  ['csv', 'text/csv'],
+  ['json', 'application/json'],
+  ['zip', 'application/zip'],
+  ['gz', 'application/gzip'],
+]);
 
-function contentTypeFor(filename: string): string {
+/**
+ * A `Map`, not an object literal. `report.constructor` passes the filename
+ * rule — letters only after the dot — and an object literal indexed by that
+ * extension answered `Object` itself, a function where a media type was
+ * promised, which went into the multipart part as its content type.
+ */
+export function contentTypeFor(filename: string): string {
   const extension = filename.slice(filename.lastIndexOf('.') + 1).toLowerCase();
-  return CONTENT_TYPES[extension] ?? 'application/octet-stream';
+  return CONTENT_TYPES.get(extension) ?? 'application/octet-stream';
 }
 
 export function registerAssetTools(

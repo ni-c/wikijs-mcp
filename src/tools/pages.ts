@@ -42,7 +42,7 @@ import * as gql from '../gql/pages.js';
 import { matchPages } from '../grep.js';
 import { guarded } from '../guard.js';
 import { outlineOf, sectionOf, windowOf } from '../markdown.js';
-import { listOf, objectOf } from '../normalize.js';
+import { idOf, listOf, objectOf } from '../normalize.js';
 import { assertWithinScope } from '../paths.js';
 import type { ToolContext } from './context.js';
 
@@ -134,6 +134,23 @@ async function fetchContent(
       };
     }
     throw error;
+  }
+}
+
+/** The `page.updatedAt` of a create or update answer, when Wiki.js gave one. */
+function writtenTimestamp(mutation: unknown): string | undefined {
+  const page = (mutation as { page?: { updatedAt?: unknown } } | null)?.page;
+  return typeof page?.updatedAt === 'string' ? page.updatedAt : undefined;
+}
+
+/** The `page.id` of a create answer, when Wiki.js gave a usable one. */
+function writtenId(mutation: unknown): number | undefined {
+  const page = (mutation as { page?: unknown } | null)?.page;
+  if (page === null || typeof page !== 'object') return undefined;
+  try {
+    return idOf(page as Record<string, unknown>, 'the created page');
+  } catch {
+    return undefined;
   }
 }
 
@@ -293,7 +310,7 @@ export function registerPageTools(
     }): Promise<CallToolResult | InputRequiredResult> =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
-        const id = page.id as number;
+        const id = idOf(page, 'the page');
         const wanted = mode ?? 'content';
         const meta = { ...page, tags: tagNames(page.tags) };
         // Remember when the caller saw this page. update_page compares against
@@ -504,12 +521,29 @@ export function registerPageTools(
           authorId: null,
         });
         const pages = objectOf(data.pages, 'the page query');
-        const everything = listOf(pages.list, 'pages') as Array<{
-          id: number;
-          path: string;
-          title?: string;
-          locale?: string;
-        }>;
+        // Shaped, not cast: an entry without a string path used to throw
+        // `startsWith is not a function` out of the filter below, and one
+        // without a usable id would have gone into the content query as it was.
+        const everything = listOf(pages.list, 'pages').flatMap((entry) => {
+          if (entry === null || typeof entry !== 'object') return [];
+          const record = entry as Record<string, unknown>;
+          const { id, path, title, locale: pageLocale } = record;
+          if (
+            typeof id !== 'number' ||
+            !Number.isSafeInteger(id) ||
+            typeof path !== 'string'
+          ) {
+            return [];
+          }
+          return [
+            {
+              id,
+              path,
+              ...(typeof title === 'string' ? { title } : {}),
+              ...(typeof pageLocale === 'string' ? { locale: pageLocale } : {}),
+            },
+          ];
+        });
         // Filter first, cap second. `tags` and `locale` are GraphQL variables
         // and have already narrowed `everything`; path_prefix is the one
         // narrowing that happens here, and applying it after the cap made it
@@ -751,8 +785,18 @@ export function registerPageTools(
         });
         const pages = objectOf(data.pages, 'the page mutation');
         assertSucceeded(pages.create, 'create_page');
+        // The id and timestamp Wiki.js assigned, beside the path this call
+        // was made with. Not the `page` object as returned: this result is
+        // unmarked — the server's own words — and the object carries a
+        // `title` the instance wrote back, which is the one field here that
+        // is not this server's to vouch for.
         return jsonResult({
-          created: (pages.create as { page?: unknown }).page,
+          created: {
+            id: writtenId(pages.create),
+            path,
+            locale: locale ?? api.defaultLocale,
+            updatedAt: writtenTimestamp(pages.create),
+          },
         });
       })
   );
@@ -843,7 +887,7 @@ export function registerPageTools(
         }
 
         const page = await resolvePage(api, { page_id, path, locale });
-        const id = page.id as number;
+        const id = idOf(page, 'the page');
         const currentPath = String(page.path);
         assertWithinScope(scope, currentPath, 'page path');
 
@@ -944,14 +988,16 @@ export function registerPageTools(
         assertSucceeded(pages.update, 'update_page');
         // Our own write is now the newest state, so record it: a follow-up edit
         // in the same session must not be refused as somebody else's change.
-        const written = pages.update as { page?: { updatedAt?: unknown } };
-        if (typeof written.page?.updatedAt === 'string') {
-          reads.record(id, written.page.updatedAt);
+        const updatedAt = writtenTimestamp(pages.update);
+        if (updatedAt !== undefined) {
+          reads.record(id, updatedAt);
         } else {
           reads.forget(id);
         }
+        // Same reasoning as create_page: the page's `title` as Wiki.js returns
+        // it is, on a metadata-only edit, the title somebody else wrote.
         return jsonResult({
-          updated: (pages.update as { page?: unknown }).page,
+          updated: { id, path: currentPath, updatedAt },
           appliedEdits: edits?.length ?? 0,
         });
       })
@@ -989,7 +1035,7 @@ export function registerPageTools(
     ) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
-        const id = page.id as number;
+        const id = idOf(page, 'the page');
         const from = String(page.path);
         const toLocale = destination_locale ?? api.defaultLocale;
         // Both ends: a scope that only checked the source would let a page be
@@ -1051,7 +1097,7 @@ export function registerPageTools(
     async ({ page_id, path, locale, confirm_token }, mcp) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
-        const id = page.id as number;
+        const id = idOf(page, 'the page');
         const pagePath = String(page.path);
         assertWithinScope(scope, pagePath, 'page path');
 
@@ -1105,7 +1151,7 @@ export function registerPageTools(
     async ({ page_id, path, locale, editor, confirm_token }, mcp) =>
       run(async () => {
         const page = await resolvePage(api, { page_id, path, locale });
-        const id = page.id as number;
+        const id = idOf(page, 'the page');
         assertWithinScope(scope, String(page.path), 'page path');
 
         return guarded(

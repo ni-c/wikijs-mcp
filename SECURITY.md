@@ -69,26 +69,26 @@ the reason rather than answered with a fresh prompt. `test/confirmation-binding.
 asserts that for every argument of every gated tool, and fails when a new argument
 is added without being accounted for.
 
-What a confirmation does **not** promise is freshness. `mcp-approval` seals its
-`requestState` so that a reply cannot be pointed at a different operation — that is
-binding, not a proof that the answer is recent, and the two are easy to confuse.
-As the paths stand today the distinction is not reachable here:
+What a confirmation promises beyond binding depends on how the answer travels, and
+this server serves both protocol revisions through `serveStdio` — the opening
+exchange picks `2025-11-25` or `2026-07-28` per connection.
 
-- The elicitation reply only travels as request content on protocol revision
-  `2026-07-28`. This server connects through `StdioServerTransport`, so it answers
-  `2025-11-25` even to a client that asks for `2026-07-28` (verified against the
-  built `dist/index.js` with raw JSON-RPC). On `2025-11-25` the SDK resolves the
-  dialog inside the same `tools/call`, so there is no sealed state on the wire to
-  replay.
+- On `2025-11-25` the dialog is resolved inside the same `tools/call`: there is no
+  sealed state on the wire, and nothing to replay.
+- On `2026-07-28` the dialog is a return value. `mcp-approval` seals the
+  `requestState` that travels through the client and comes back with the answer;
+  the seal proves the answer belongs to the question. Since `mcp-approval` 0.8.1 the
+  state also carries a nonce that is spent on the first answer, accepted _or_
+  declined, so the same state presented again within its lifetime is refused.
+  The record of spent states is per process: a restart forgets it, and a state
+  sealed before the restart is accepted once more within its fifteen-minute
+  lifetime. That is the residual, stated rather than hidden.
 - The two-call token is single-use and expires, so it cannot be replayed either.
 
-The day this server speaks the newer revision, the question becomes real for the two
-tools where a stale approval would be worth something — `reset_user_password`, which
-mails a working reset link, and `purge_page_history`, which deletes across the whole
-wiki. What would be needed then is an issued-at timestamp inside the sealed state and
-a deadline checked when the reply comes back. **Deliberately not built now**: a
-mechanism with no path to exercise it is a mechanism nobody notices has stopped
-working.
+An earlier revision of this file claimed the sealed state never left the process
+because the hand-wired stdio transport pinned `2025-11-25`. That had stopped being
+true with the move to `serveStdio`; `test/hardening.test.ts` checks that this file
+names the transport the code uses.
 
 Data returned from the upstream API is untrusted input: it is marked as such, and
 confirmation prompts never quote it. That includes the text of a refusal Wiki.js

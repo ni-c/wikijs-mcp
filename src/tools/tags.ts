@@ -8,7 +8,7 @@ import { fingerprint, identifier } from '../resource-key.js';
 import * as gql from '../gql/pages.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { PathScopeError } from '../paths.js';
+import { describeScope, PathScopeError } from '../paths.js';
 import { budgetedList, run, sentenceResult } from '../result.js';
 import { confirmTokenParam, idParam, tagParam, titleParam } from '../schema.js';
 import type { ToolContext } from './context.js';
@@ -21,7 +21,7 @@ function refuseWhenScoped(
   if (!scope.active) return;
   throw new PathScopeError(
     `${tool} affects every page carrying the tag, wherever it lives, and cannot ` +
-      `be confined to WIKIJS_ALLOWED_PATHS (${scope.prefixes.join(', ')}). ` +
+      `be confined to WIKIJS_ALLOWED_PATHS (${describeScope(scope)}). ` +
       'Unset it to run this.'
   );
 }

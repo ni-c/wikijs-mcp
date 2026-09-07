@@ -28,7 +28,9 @@ Every tool declares an `outputSchema` and answers with `structuredContent` besid
 the text block, so a client can use a result without parsing prose. The tools
 that report wiki content carry `untrusted: true` and `source: "wikijs"` as fields
 of that object — page text, titles, descriptions and comments are written by
-anyone with edit rights.
+anyone with edit rights, and so are the name, location and job title of a user,
+which is why `list_users`, `search_users`, `get_user` and `get_group` (whose
+members carry their names) are marked too.
 
 ## Read tools
 

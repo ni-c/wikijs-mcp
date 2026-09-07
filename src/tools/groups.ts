@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { plain } from '../output-schema.js';
+import { marked, plain } from '../output-schema.js';
 
 import { assertSucceeded } from '../api.js';
 import {
@@ -13,7 +13,13 @@ import { fingerprint, identifier, label } from '../resource-key.js';
 import * as gql from '../gql/admin.js';
 import { guarded } from '../guard.js';
 import { listOf, objectOf } from '../normalize.js';
-import { budgetedList, jsonResult, run, sentenceResult } from '../result.js';
+import {
+  budgetedList,
+  budgetedUntrustedResult,
+  jsonResult,
+  run,
+  sentenceResult,
+} from '../result.js';
 import { confirmTokenParam, idParam, localeParam } from '../schema.js';
 import type { ToolContext } from './context.js';
 
@@ -98,7 +104,9 @@ export function registerGroupTools(
         'because that mutation replaces the whole rule set.',
       inputSchema: z.object({ group_id: idParam }),
       annotations: READ_ONLY,
-      outputSchema: plain(),
+      // Marked: the group's `users` carry each member's display name, which
+      // is a profile field the member wrote.
+      outputSchema: marked(),
     },
     async ({ group_id }) =>
       run(async () => {
@@ -109,7 +117,7 @@ export function registerGroupTools(
           objectOf(data.groups, 'the group query').single,
           `group ${group_id}`
         );
-        return jsonResult({ group });
+        return budgetedUntrustedResult({ group });
       })
   );
 

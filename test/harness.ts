@@ -192,6 +192,11 @@ export async function connect(
     client.connect(clientTransport),
     server.connect(serverTransport),
   ]);
+  // Listed once, so every `callTool` below runs the client's own check of
+  // `structuredContent` against the declared output schema on the success
+  // path. Without this the SDK has no schema to check against, and a result
+  // that a real client would refuse stays green here.
+  await client.listTools();
 
   const call = async (
     name: string,

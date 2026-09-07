@@ -75,7 +75,14 @@ See [Asking a person](/guide/approval).
 A wiki is precisely a place where text is stored so that it can be read later —
 which makes every page a channel for whoever can edit it. Page bodies, titles,
 descriptions, comments and version history all come back wrapped in an explicit
-marker saying they are data and not instructions.
+marker saying they are data and not instructions. So do user listings: a name, a
+location and a job title are profile fields every account writes for itself.
+
+Every string in a result is cleaned of control characters (the C0 and C1 ranges
+and DEL, keeping tab and newline) and of lone surrogates before it leaves — page
+bodies included. Format characters such as bidi marks stay, because in a wiki they
+are content. Error messages the instance wrote are cleaned the same way and set off
+under a line saying who wrote them.
 
 Confirmation prompts never quote any of it. Only ids, paths and server-side values
 appear in them, and a path is checked to be a bare identifier — no whitespace,

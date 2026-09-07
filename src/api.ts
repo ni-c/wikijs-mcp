@@ -23,6 +23,19 @@ const REQUEST_TIMEOUT_MS = 30_000;
  */
 export const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 
+/**
+ * Ceiling on the body of an answer that already failed by its status.
+ *
+ * Small, and read with a reader that cuts rather than refuses: the status is
+ * the answer, the body is at most a hint. A reverse proxy's two-megabyte login
+ * page behind a 401 used to be reported as "the response exceeds the 32 MB
+ * ceiling" — the size, not the status, and no word about credentials.
+ */
+export const MAX_ERROR_BODY_BYTES = 64 * 1024;
+
+/** Longest header value this server will send. */
+const MAX_HEADER_VALUE_LENGTH = 8192;
+
 /** A GraphQL error entry as Wiki.js returns it. */
 export interface GraphQLErrorEntry {
   message: string;
@@ -50,13 +63,40 @@ export class WikiJsApiError extends Error {
  * every list helper downstream reports an empty wiki rather than an error.
  */
 export class WikiJsGraphQLError extends Error {
+  /**
+   * The entries, each reduced to the shape the type promises.
+   *
+   * The wire promises nothing: `errors: [null]` or an entry whose `message` is
+   * a number is legal JSON from whatever answers at `WIKIJS_URL`, and the
+   * previous constructor read `.message` off each entry as it came, so the
+   * first malformed one turned a refusal into a TypeError about `null`.
+   */
+  public readonly errors: GraphQLErrorEntry[];
+
   constructor(
-    public readonly errors: GraphQLErrorEntry[],
+    errors: unknown[],
     public readonly operation: string
   ) {
+    const entries = errors.flatMap((entry): GraphQLErrorEntry[] => {
+      if (entry === null || typeof entry !== 'object') return [];
+      const { message, extensions } = entry as {
+        message?: unknown;
+        extensions?: unknown;
+      };
+      const shaped: GraphQLErrorEntry = {
+        message: typeof message === 'string' ? message : '(no message given)',
+      };
+      if (extensions !== null && typeof extensions === 'object') {
+        shaped.extensions = extensions as NonNullable<
+          GraphQLErrorEntry['extensions']
+        >;
+      }
+      return [shaped];
+    });
     super(
-      `Wiki.js rejected ${operation}: ${errors.map((e) => e.message).join('; ')}`
+      `Wiki.js rejected ${operation}: ${entries.map((e) => e.message).join('; ')}`
     );
+    this.errors = entries;
     this.name = 'WikiJsGraphQLError';
   }
 
@@ -171,6 +211,35 @@ export class UnexpectedContentTypeError extends Error {
   }
 }
 
+/**
+ * Refuses a header value the HTTP layer would refuse, before it can.
+ *
+ * undici's refusal is `Headers.append: "Bearer <the whole token>" is an
+ * invalid header value.` — a `TypeError` that quotes the value in full and
+ * reaches the model through the generic error path. A token with a line break
+ * in the middle, which is what a wrapped paste looks like, was printed into
+ * the tool result that way. `loadConfig` refuses that shape at startup; this
+ * is the check at the header itself, so no path to `fetch` can skip it.
+ */
+export function assertHeaderValue(name: string, value: string): void {
+  if (value.length > MAX_HEADER_VALUE_LENGTH) {
+    throw new Error(
+      `the ${name} header is ${value.length} characters long, above the ` +
+        `${MAX_HEADER_VALUE_LENGTH} this server will send — check WIKIJS_TOKEN.`
+    );
+  }
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code < 0x20 || code > 0x7e) {
+      throw new Error(
+        `the ${name} header contains a character outside printable ASCII at ` +
+          `position ${i + 1} of ${value.length}, which the HTTP layer refuses — ` +
+          'a line break or a non-ASCII character in WIKIJS_TOKEN is the usual cause.'
+      );
+    }
+  }
+}
+
 export interface RequestOptions {
   /** Overrides {@link MAX_RESPONSE_BYTES} for operations with a known ceiling. */
   maxBytes?: number;
@@ -205,6 +274,13 @@ export class WikiJsApi {
     return this.config.locale;
   }
 
+  /** The bearer header, checked before the HTTP layer can quote it. */
+  private authorization(): string {
+    const value = `Bearer ${this.config.token ?? ''}`;
+    assertHeaderValue('Authorization', value);
+    return value;
+  }
+
   /**
    * Runs a GraphQL document and returns its `data`.
    *
@@ -226,7 +302,7 @@ export class WikiJsApi {
     const init: RequestInit = {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.config.token ?? ''}`,
+        Authorization: this.authorization(),
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
@@ -247,6 +323,18 @@ export class WikiJsApi {
         } as UndiciRequestInit)
       : await fetch(url, init);
 
+    // The status decides first. A failed answer's body is read under its own
+    // small ceiling, so a large error page cannot turn a 401 into a report
+    // about size — and the 32 MB ceiling applies only to an answer that is
+    // actually the data.
+    if (!response.ok) {
+      throw new WikiJsApiError(
+        response.status,
+        await readErrorBody(response as unknown as Response),
+        operation
+      );
+    }
+
     const limit = options.maxBytes ?? MAX_RESPONSE_BYTES;
     const text = await readCapped(
       response as unknown as Response,
@@ -254,16 +342,12 @@ export class WikiJsApi {
       operation
     );
 
-    if (!response.ok) {
-      throw new WikiJsApiError(response.status, text, operation);
-    }
-
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('application/json')) {
       throw new UnexpectedContentTypeError(contentType);
     }
 
-    let body: { data?: unknown; errors?: GraphQLErrorEntry[] };
+    let body: { data?: unknown; errors?: unknown };
     try {
       body = JSON.parse(text) as typeof body;
     } catch {
@@ -313,7 +397,7 @@ export class WikiJsApi {
 
     const init: RequestInit = {
       method: 'POST',
-      headers: { Authorization: `Bearer ${this.config.token ?? ''}` },
+      headers: { Authorization: this.authorization() },
       body: form,
       redirect: 'error',
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -327,14 +411,18 @@ export class WikiJsApi {
         } as UndiciRequestInit)
       : await fetch(url, init);
 
+    if (!response.ok) {
+      throw new WikiJsApiError(
+        response.status,
+        await readErrorBody(response as unknown as Response),
+        'upload_asset'
+      );
+    }
     const text = await readCapped(
       response as unknown as Response,
-      64 * 1024,
+      MAX_ERROR_BODY_BYTES,
       'upload_asset'
     );
-    if (!response.ok) {
-      throw new WikiJsApiError(response.status, text, 'upload_asset');
-    }
     // `/u` answers `ok` on success and an error string otherwise, both with 200.
     if (text.trim() !== 'ok') {
       throw new WikiJsApiError(response.status, text, 'upload_asset');
@@ -376,9 +464,9 @@ export function assertSucceeded(payload: unknown, operation: string): void {
   }
   if (result.succeeded === true) return;
   throw new WikiJsOperationError(
-    result.errorCode ?? 0,
-    result.slug ?? 'unknown',
-    result.message ?? 'no reason given',
+    typeof result.errorCode === 'number' ? result.errorCode : 0,
+    typeof result.slug === 'string' ? result.slug : 'unknown',
+    typeof result.message === 'string' ? result.message : 'no reason given',
     operation
   );
 }
@@ -420,5 +508,37 @@ async function readCapped(
     total += value.byteLength;
   }
 
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * Reads the body of a failed answer: at most {@link MAX_ERROR_BODY_BYTES},
+ * cut rather than refused, and never a reason to throw — the status already
+ * is the answer, and a body that cannot be read is an empty hint, not a
+ * different error.
+ */
+async function readErrorBody(response: Response): Promise<string> {
+  const body = response.body;
+  if (!body) return '';
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value === undefined) continue;
+      const room = MAX_ERROR_BODY_BYTES - total;
+      if (value.byteLength >= room) {
+        chunks.push(value.subarray(0, room));
+        await reader.cancel();
+        break;
+      }
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  } catch {
+    // Whatever was read is the hint; the status is the answer.
+  }
   return Buffer.concat(chunks).toString('utf8');
 }

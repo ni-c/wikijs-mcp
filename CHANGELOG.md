@@ -14,16 +14,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-09-07
 
-### Changed
+### Security
 
-- `docs/reference/tools.md` is written by hand again. It used to be generated
-  from the registered tools, which kept it in step with the code at the price of
-  a page nobody could edit: `--check` compared it byte for byte, so every line
-  had to be derivable and a paragraph about how an endpoint really behaves had
-  nowhere to go. A test now asserts what the generator guaranteed — the page
-  documents exactly the tools that exist, marks exactly the `essential` preset,
-  and marks exactly the tools that ask a person first — and leaves the prose to
-  a person.
+- **A heading line can no longer stall the server.** The ATX heading pattern
+  behind `get_page` with `mode="outline"` or `section=` was cubic in the
+  whitespace of a line: `# x`, four thousand spaces and a `y` cost 8.6 seconds
+  on the thread that serves every request, and a page body may be five
+  megabytes. Headings are parsed by a hand-written scan, and
+  `test/linear-time.test.ts` holds every scan over wiki text at its ceiling.
+- **The token is never quoted back.** `WIKIJS_TOKEN` is trimmed and checked for
+  shape at startup. A line break in the middle of a wrapped paste used to reach
+  the HTTP layer, whose refusal quotes the whole `Authorization` value — token
+  included — into the tool result. The message names the variable, the length
+  and the position, never the value; `assertHeaderValue` repeats the check at
+  the header itself.
+- **Status before body.** A failed answer's body is read under a 64 KiB ceiling
+  that cuts rather than refuses, after the status has been read. A 401 behind a
+  reverse proxy's two-megabyte login page used to surface as "exceeds the 32 MB
+  ceiling" — the size, not the status, and no word about credentials.
+- **The asset scope walk has a budget.** Placing an asset folder under
+  `WIKIJS_ALLOWED_PATHS` lists at most 256 folders in 30 seconds and then
+  refuses, the way an unfound folder does. Only the depth was bounded before,
+  and a wide tree turned one upload into thousands of requests.
+- **SECURITY.md argued from a transport the code no longer uses.** It said the
+  sealed dialog answer never leaves the process because `StdioServerTransport`
+  pins `2025-11-25`; the server has served both protocol revisions through
+  `serveStdio` since 0.2.0. The section now says what the single-use nonce of
+  mcp-approval 0.8.1 promises, and what it does not — a restart forgets spent
+  states.
+- The publish job installs with `--ignore-scripts` while it holds the OIDC
+  token, and `gh release create` verifies the tag. Pull requests get
+  `dependency-review-action`. The image no longer ships yarn, corepack or the
+  lockfile.
+- Every string in a result is cleaned of C0/C1 control characters and lone
+  surrogates, page bodies included; format characters (bidi marks, zero-width
+  joiners) stay, because in a wiki they are content. Error messages the
+  instance wrote — GraphQL errors, HTTP error bodies — are cleaned the same way
+  and set off under a line saying who wrote them, as `responseResult.message`
+  already was.
+- `list_users`, `search_users`, `get_user` and `get_group` answer marked as
+  untrusted: a user's name, location and job title are profile fields the
+  account writes for itself. `create_page`, `update_page` and `create_user`
+  answer with ids, paths and timestamps rather than the record as returned,
+  whose `title` or `name` the instance wrote.
+- The budget's shortener remembers what it cut by position, not by a marker at
+  the end of the value. A comment or page version whose text ended in
+  `… (5 more characters omitted)` was never shortened, and the tool answered an
+  error for that one item.
+- Credentials in URLs are redacted wherever the URL sits in a string — a
+  storage target's `status.message` is git's stderr and names the remote
+  mid-sentence — not only when the whole value is a URL.
+- Diagnostics describe rather than quote: the scheme of a rejected
+  `WIKIJS_URL` (a hexadecimal key followed by a colon is a URL), an
+  unrecognised `ELICITATION` value, and `WIKIJS_ALLOWED_PATHS` entries that are
+  not path-shaped are reported by length. A token pasted into the neighbouring
+  variable is no longer printed at startup or in a scope refusal.
+- The content-type table is a `Map`: `report.constructor` passes the filename
+  rule, and the object literal it indexed answered `Object` where a media type
+  was promised. Result copies are built with `Object.fromEntries`, so a
+  `__proto__` key in the backend's JSON is a field rather than a prototype.
+- Ids are read at the boundary rather than cast; `errors: [null]` in a GraphQL
+  answer is a refusal rather than a TypeError; `grep_pages` skips a listing
+  entry without a string path instead of throwing on it. `idParam` is bounded
+  to a 32-bit integer, an edit's `old_text` and `new_text` to the page
+  ceiling, `list_page_history.page` to a million.
 
 ### Added
 
@@ -39,14 +93,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **mcp-approval 0.8.2.** A sealed dialog answer is single-use since 0.8.1: the
+  same `requestState` presented again within its lifetime used to be accepted
+  again, and with a resource key that is the same every time — a whole stream,
+  a fixed set of targets — every replay landed. npm users on `^0.8.0` already
+  had the fix; the Docker image is built from the lockfile and carried 0.8.0
+  until this release.
+- `docs/reference/tools.md` is written by hand again. It used to be generated
+  from the registered tools, which kept it in step with the code at the price of
+  a page nobody could edit: `--check` compared it byte for byte, so every line
+  had to be derivable and a paragraph about how an endpoint really behaves had
+  nowhere to go. A test now asserts what the generator guaranteed — the page
+  documents exactly the tools that exist, marks exactly the `essential` preset,
+  and marks exactly the tools that ask a person first — and leaves the prose to
+  a person.
 - The loopback check behind the plain-HTTP warning comes from
   `mcp-internal-hosts` instead of a copy in `config.ts`. Same classifier the
   rest of the family uses, same behaviour — one fewer place to keep 25 lines of
   hand-written IPv6 normalisation correct.
-
-### Security
-
-- **mcp-approval 0.8.2.** A sealed dialog answer is single-use since 0.8.1: the same `requestState` presented again within its lifetime used to be accepted again, and with a resource key that is the same every time — a whole stream, a fixed set of targets — every replay landed. npm users on `^0.8.0` already had the fix; the Docker image is built from the lockfile and carried 0.8.0 until this release.
 
 ## [0.2.0] - 2026-09-03
 
