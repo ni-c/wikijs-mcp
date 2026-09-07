@@ -69,7 +69,7 @@ export interface FetchStub {
  */
 export function stubFetch(routes: Routes = {}): FetchStub {
   const calls: Recorded[] = [];
-  const keys = Object.keys(routes).sort((a, b) => b.length - a.length);
+  const keys = Object.keys(routes).toSorted((a, b) => b.length - a.length);
 
   vi.stubGlobal(
     'fetch',

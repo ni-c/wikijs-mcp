@@ -26,12 +26,12 @@ describe('the catalogue matches the server that is actually built', () => {
   // list honest — and the reason no other test file repeats the names.
   it('registers exactly ALL_TOOLS by default', async () => {
     const names = await toolNames(testConfig());
-    expect([...names].sort()).toEqual([...ALL_TOOLS].sort());
+    expect(names.toSorted()).toEqual(ALL_TOOLS.toSorted());
   });
 
   it('registers exactly READ_TOOLS under WIKIJS_READ_ONLY', async () => {
     const names = await toolNames(testConfig({ readOnly: true }));
-    expect([...names].sort()).toEqual([...READ_TOOLS].sort());
+    expect(names.toSorted()).toEqual(READ_TOOLS.toSorted());
   });
 
   it('has no name in both halves', () => {
@@ -89,7 +89,7 @@ describe('the filter this server builds', () => {
       ...base,
       allowTools: ' GET_PAGE , list_pages ',
     });
-    expect([...filter.selected].sort()).toEqual(['get_page', 'list_pages']);
+    expect([...filter.selected].toSorted()).toEqual(['get_page', 'list_pages']);
   });
 
   it('expands a trailing-star prefix', () => {
@@ -100,7 +100,7 @@ describe('the filter this server builds', () => {
 
   it('expands the essential preset', () => {
     const filter = toolFilterFor({ ...base, allowTools: 'essential' });
-    expect([...filter.selected].sort()).toEqual([...ESSENTIAL_TOOLS].sort());
+    expect([...filter.selected].toSorted()).toEqual(ESSENTIAL_TOOLS.toSorted());
   });
 
   it('subtracts the deny list from the allow list', () => {
@@ -186,10 +186,30 @@ describe('the filter this server builds', () => {
   });
 });
 
+/**
+ * Calls delete_page on a connected server and resolves to the refusal's
+ * message. SDK v2 answers a call to an unknown tool with a JSON-RPC error
+ * rather than a result carrying isError, so the call rejects; the test that
+ * uses this compares two such refusals and is unaffected.
+ */
+function refusal(harness: {
+  // `Record<string, unknown>` rather than `object`: `call` is declared as a
+  // property on `Connected`, so its parameter is checked contravariantly
+  // and the wider `object` does not accept the narrower argument type.
+  call: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+}): Promise<string> {
+  return harness.call('delete_page', { page_id: 1 }).then(
+    () => {
+      throw new Error('delete_page answered instead of being refused');
+    },
+    (error: Error) => error.message
+  );
+}
+
 describe('the filter applied to a real server', () => {
   it('registers only the selected tools', async () => {
     const names = await toolNames(testConfig({ allowTools: 'essential' }));
-    expect([...names].sort()).toEqual([...ESSENTIAL_TOOLS].sort());
+    expect(names.toSorted()).toEqual(ESSENTIAL_TOOLS.toSorted());
   });
 
   it('still answers tools/list when almost everything is filtered out', async () => {
@@ -206,21 +226,6 @@ describe('the filter applied to a real server', () => {
     const { connect } = await import('./harness.js');
     const filtered = await connect(testConfig({ allowTools: 'get_page' }));
     const readOnly = await connect(testConfig({ readOnly: true }));
-    // SDK v2 answers a call to an unknown tool with a JSON-RPC error rather
-    // than a result carrying isError, so both calls reject. The equivalence is
-    // what this test is about and is unaffected.
-    const refusal = (harness: {
-      // `Record<string, unknown>` rather than `object`: `call` is declared as a
-      // property on `Connected`, so its parameter is checked contravariantly
-      // and the wider `object` does not accept the narrower argument type.
-      call: (name: string, args: Record<string, unknown>) => Promise<unknown>;
-    }) =>
-      harness.call('delete_page', { page_id: 1 }).then(
-        () => {
-          throw new Error('delete_page answered instead of being refused');
-        },
-        (error: Error) => error.message
-      );
     const a = await refusal(filtered);
     const b = await refusal(readOnly);
     expect(a).toEqual(b);

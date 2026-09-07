@@ -213,8 +213,8 @@ export const patternParam = z
   .refine(
     (value) => {
       try {
-        new RegExp(value);
-        return true;
+        const compiled = new RegExp(value);
+        return compiled instanceof RegExp;
       } catch {
         return false;
       }

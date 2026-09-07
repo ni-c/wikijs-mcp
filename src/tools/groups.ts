@@ -208,7 +208,7 @@ export function registerGroupTools(
             targets: [
               `group:${group_id}`,
               `name:${fingerprint(name)}`,
-              `permissions:${fingerprint([...permissions].sort())}`,
+              `permissions:${fingerprint(permissions.toSorted())}`,
               `rules:${fingerprint(page_rules)}`,
               `redirect:${fingerprint(redirect_on_login ?? '/')}`,
             ],
