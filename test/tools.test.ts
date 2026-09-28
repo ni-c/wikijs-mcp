@@ -306,33 +306,33 @@ describe('grep_pages', () => {
   });
 });
 
-describe('update_page', () => {
-  const writeRoutes = (overrides: Routes = {}): Routes =>
-    pageRoutes({
-      'mutation UpdatePage': {
-        data: {
-          pages: {
-            update: {
-              responseResult: {
-                succeeded: true,
-                errorCode: 0,
-                slug: 'ok',
-                message: 'ok',
-              },
-              page: {
-                id: 7,
-                path: 'docs/setup',
-                title: 'Setup',
-                updatedAt: '2026-01-03T00:00:00.000Z',
-              },
+const writeRoutes = (overrides: Routes = {}): Routes =>
+  pageRoutes({
+    'mutation UpdatePage': {
+      data: {
+        pages: {
+          update: {
+            responseResult: {
+              succeeded: true,
+              errorCode: 0,
+              slug: 'ok',
+              message: 'ok',
+            },
+            page: {
+              id: 7,
+              path: 'docs/setup',
+              title: 'Setup',
+              updatedAt: '2026-01-03T00:00:00.000Z',
             },
           },
         },
       },
-      'query CheckConflicts': { data: { pages: { checkConflicts: false } } },
-      ...overrides,
-    });
+    },
+    'query CheckConflicts': { data: { pages: { checkConflicts: false } } },
+    ...overrides,
+  });
 
+describe('update_page', () => {
   it('sends every field, merging the caller over the current values', async () => {
     // Wiki.js treats an unsupplied argument differently for every field, and
     // none of the three ways means "leave it alone": omitting isPublished
