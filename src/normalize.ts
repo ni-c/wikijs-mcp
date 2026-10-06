@@ -235,15 +235,21 @@ function visit(node: unknown): unknown {
     return { ...record, value: REDACTED };
   }
 
-  // `Object.fromEntries` rather than `out[key] = …`: a key spelled `__proto__`
-  // — an own property after JSON.parse, legal JSON from any backend — would
-  // set the copy's prototype and drop the field. Wiki.js chooses no key today;
-  // the copy is built so that it could.
+  // A key spelled `__proto__` — an own property after JSON.parse, legal JSON
+  // from any backend — is dropped, not carried. The text block would show it,
+  // but the client parses `structuredContent` against a zod schema that builds
+  // its result by assignment, where that name sets a prototype instead of a
+  // field, so the two channels would disagree about the same answer. The name is
+  // checked after cleaning, so a control character inside it cannot smuggle it
+  // past. `Object.fromEntries` still builds the copy: plain assignment would set
+  // its prototype for any other key that reaches it the same way.
   return Object.fromEntries(
-    Object.entries(record).map(([key, value]) => [
-      key,
-      isSensitiveName(key) ? REDACTED : visit(value),
-    ])
+    Object.entries(record)
+      .filter(([key]) => cleanText(key) !== '__proto__')
+      .map(([key, value]) => [
+        key,
+        isSensitiveName(key) ? REDACTED : visit(value),
+      ])
   );
 }
 

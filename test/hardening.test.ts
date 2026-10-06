@@ -687,23 +687,47 @@ describe('W-12 (4.4) — no object literal is indexed by a string somebody else 
     expect(contentTypeFor('x.PNG')).toBe('image/png');
   });
 
-  it('keeps a __proto__ key from the backend as a field', () => {
+  it('drops a __proto__ key at every depth and nothing else', () => {
     const out = redactSensitive(
-      JSON.parse('{"__proto__": {"polluted": true}, "b": 2}') as object
+      JSON.parse(
+        '{"__proto__": {"polluted": true}, "b": 2, "n": {"__proto__": 1, "k": 3},' +
+          ' "a": [{"__proto__": [], "z": 4}], "__pro\\u0000to__": 5, "z": {"__proto__": null}}'
+      ) as object
     ) as Record<string, unknown>;
-    expect(Object.hasOwn(out, '__proto__')).toBe(true);
+    expect(out).toEqual({ b: 2, n: { k: 3 }, a: [{ z: 4 }], z: {} });
+    expect(JSON.stringify(out)).not.toContain('__proto__');
     expect(Object.getPrototypeOf(out)).toBe(Object.prototype);
     expect((out as { polluted?: unknown }).polluted).toBeUndefined();
+    const top = redactSensitive(JSON.parse('{"__proto__": null}') as object);
+    expect(top).toEqual({});
+    expect(Object.getPrototypeOf(top)).toBe(Object.prototype);
   });
 
-  it('records a dropped list under a __proto__ key without touching the prototype', () => {
+  it('answers the same in both channels when the backend sends __proto__', async () => {
+    stubFetch({
+      'query ListTags': {
+        raw: '{"data":{"pages":{"tags":[{"__proto__":{"x":1},"id":1,"tag":"docs","title":"docs"}]}}}',
+      },
+    });
+    const { call, close } = await connect();
+    const result = await call('list_tags', {});
+    expect(result.isError).toBeFalsy();
+    const text = (result.content as { text: string }[])[0]?.text ?? '';
+    expect(text).not.toContain('__proto__');
+    expect(JSON.parse(text.slice(text.indexOf('{')))).toEqual(
+      JSON.parse(JSON.stringify(result.structuredContent))
+    );
+    await close();
+  });
+
+  it('records a dropped list under an ordinary key without touching the prototype', () => {
     const doc = JSON.parse(
-      `{"__proto__": ${JSON.stringify(Array.from({ length: 6000 }, (_, i) => ({ i, t: 'x'.repeat(30) })))}}`
+      `{"items": ${JSON.stringify(Array.from({ length: 6000 }, (_, i) => ({ i, t: 'x'.repeat(30) })))}}`
     ) as object;
     const out = budget(doc) as {
       truncated: { lists: Record<string, unknown> };
     };
-    expect(Object.hasOwn(out.truncated.lists, '__proto__')).toBe(true);
+    expect(Object.hasOwn(out.truncated.lists, 'items')).toBe(true);
     expect(Object.getPrototypeOf(out.truncated.lists)).toBe(Object.prototype);
   });
 });
