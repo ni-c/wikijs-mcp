@@ -66,7 +66,7 @@ reads stay unrestricted.
 
 ## Requirements
 
-- Node.js ≥ 22
+- Node.js ≥ 24
 - A running **Wiki.js** instance and an API token
 
 ## Configuration

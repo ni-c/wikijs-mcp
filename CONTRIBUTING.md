@@ -40,7 +40,7 @@ Wiki.js moving. It is deliberately not a gate on `publish`; see the comment in
 ## Expectations
 
 - **Tests.** Behaviour changes come with a test that fails without the change.
-  CI runs the unit tests on Node 22 and 24, the integration suite against a
+  CI runs the unit tests on Node 24 and 26, the integration suite against a
   real Wiki.js, oxlint, prettier, `npm audit`, CodeQL and a Trivy scan of the
   container image.
 - **Comments** explain constraints the code cannot show — not what the next line does.

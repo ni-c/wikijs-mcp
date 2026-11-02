@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js ≥ 22
+- Node.js ≥ 24
 - A running Wiki.js instance
 - An API token with the scopes listed under [Configuration](/guide/configuration)
 
